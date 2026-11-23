@@ -356,6 +356,7 @@ export const App: React.FC = () => {
         title={bulkSendTitle}
         subtitle={bulkSendSubtitle}
         targets={bulkSendTargets}
+        className={classInfo.className}
         gatewayConfig={gatewayConfig}
         onSaveFailedRecords={handleSaveFailedRecords}
         onToast={addToast}
