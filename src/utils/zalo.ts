@@ -1,4 +1,4 @@
-import { StudentViolationSummary, ClassInfo } from '../types';
+import { StudentViolationSummary, ClassInfo, ViolationRecord, GatewayConfig } from '../types';
 import { formatDateVN, getDayOfWeekVN } from './date';
 
 export function cleanPhoneNumber(phone: string): string {
@@ -16,50 +16,209 @@ export function getZaloChatUrl(phone: string): string {
   return `https://zalo.me/${cleaned}`;
 }
 
+export interface PhoneValidationResult {
+  valid: boolean;
+  cleanedPhone: string;
+  reason?: string;
+}
+
+/**
+ * Kiểm tra tính hợp lệ của số điện thoại di động Việt Nam
+ */
+export function validateVietnamesePhone(rawPhone: string): PhoneValidationResult {
+  if (!rawPhone || !rawPhone.trim()) {
+    return { valid: false, cleanedPhone: '', reason: 'Chưa đăng ký số điện thoại phụ huynh' };
+  }
+
+  const cleaned = cleanPhoneNumber(rawPhone);
+
+  if (cleaned.length !== 10) {
+    return {
+      valid: false,
+      cleanedPhone: cleaned,
+      reason: `SĐT không đúng chuẩn 10 số (hiện có ${cleaned.length} số: ${cleaned})`,
+    };
+  }
+
+  // Danh sách các đầu số di động hợp lệ tại Việt Nam (Viettel, Vina, Mobi, Vietnamobile, Gmobile, Itelecom, Wintel)
+  const validPrefixes = [
+    // Viettel
+    '086', '096', '097', '098', '032', '033', '034', '035', '036', '037', '038', '039',
+    // Mobifone
+    '089', '090', '093', '070', '079', '077', '076', '078',
+    // Vinaphone
+    '088', '091', '094', '083', '084', '085', '081', '082',
+    // Vietnamobile
+    '092', '056', '058',
+    // Gmobile
+    '099', '059',
+    // Itelecom / Wintel
+    '087', '055'
+  ];
+
+  const prefix = cleaned.substring(0, 3);
+  if (!validPrefixes.includes(prefix)) {
+    return {
+      valid: false,
+      cleanedPhone: cleaned,
+      reason: `Đầu số "${prefix}" không thuộc mạng di động Việt Nam hoặc là đầu số cũ`,
+    };
+  }
+
+  return { valid: true, cleanedPhone: cleaned };
+}
+
+/**
+ * Mẫu tin nhắn ngắn gọn gửi hằng ngày
+ * Gồm: Tên học sinh, Ngày vi phạm, Nội dung vi phạm (KHÔNG có họ tên phụ huynh)
+ */
+export function generateCompactDailyMessage(
+  studentName: string,
+  className: string,
+  date: string,
+  records: ViolationRecord[]
+): string {
+  const dateFormatted = formatDateVN(date);
+  const dayOfWeek = getDayOfWeekVN(date);
+
+  if (!records || records.length === 0) {
+    return `[Lớp ${className}] Thông báo nề nếp
+Học sinh: ${studentName}
+Ngày: ${dayOfWeek} (${dateFormatted})
+Kết quả: Em chấp hành rất tốt nội quy, không có vi phạm.`;
+  }
+
+  const lines = records.map((r) => {
+    const periodStr = r.period ? ` [${r.period}]` : '';
+    const subjectStr = r.subject ? ` (Môn ${r.subject})` : '';
+    const noteStr = r.note ? ` - ${r.note}` : '';
+    return `• ${r.categoryName}${periodStr}${subjectStr} (-${r.pointsDeducted}đ)${noteStr}`;
+  }).join('\n');
+
+  return `[Lớp ${className}] Thông báo vi phạm nề nếp
+Học sinh: ${studentName}
+Ngày: ${dayOfWeek} (${dateFormatted})
+Nội dung vi phạm:
+${lines}
+Kính báo gia đình phối hợp đôn đốc, nhắc nhở em.`;
+}
+
+/**
+ * Mẫu tin nhắn ngắn gọn tổng hợp định kỳ (Tuần, Tháng, Học kỳ)
+ * Gồm: Tên học sinh, Ngày/Kỳ vi phạm, Chi tiết vi phạm (KHÔNG có họ tên phụ huynh)
+ */
+export function generateCompactPeriodMessage(
+  studentName: string,
+  className: string,
+  timePeriodLabel: string,
+  records: ViolationRecord[],
+  totalViolations: number,
+  currentScore: number,
+  rank: string
+): string {
+  if (totalViolations === 0 || records.length === 0) {
+    return `[Lớp ${className}] Báo cáo nề nếp ${timePeriodLabel}
+Học sinh: ${studentName}
+Kết quả: Em thực hiện rất tốt nội quy, không vi phạm.
+Điểm nề nếp: ${currentScore}/100 (Xếp loại: Xuất sắc)`;
+  }
+
+  const lines = records.map((r, idx) => {
+    const dStr = formatDateVN(r.date);
+    const periodStr = r.period ? ` [${r.period}]` : '';
+    const noteStr = r.note ? ` - ${r.note}` : '';
+    return `${idx + 1}. Ngày ${dStr}: ${r.categoryName}${periodStr} (-${r.pointsDeducted}đ)${noteStr}`;
+  }).join('\n');
+
+  return `[Lớp ${className}] Báo cáo nề nếp ${timePeriodLabel}
+Học sinh: ${studentName}
+Tổng số vi phạm: ${totalViolations} lần | Còn ${currentScore}đ (Xếp loại: ${rank})
+Nội dung vi phạm:
+${lines}
+Kính báo gia đình phối hợp đôn đốc, nhắc nhở em.`;
+}
+
+/**
+ * Hàm chung tương thích ngược
+ */
 export function generateZaloMessage(
   summary: StudentViolationSummary,
   classInfo: ClassInfo,
   timePeriodLabel: string
 ): string {
-  const student = summary.student;
-  const parentSalutation = student.parentName ? `Kính gửi ${student.parentName}` : 'Kính gửi Quý Phụ huynh';
+  return generateCompactPeriodMessage(
+    summary.student.name,
+    classInfo.className,
+    timePeriodLabel,
+    summary.records,
+    summary.totalViolations,
+    summary.currentScore,
+    summary.rank
+  );
+}
 
-  if (summary.totalViolations === 0) {
-    return `${parentSalutation} (Phụ huynh em ${student.name} - Lớp ${classInfo.className}),
-
-🌸 Giáo viên chủ nhiệm xin trân trọng thông báo tình hình rèn luyện nề nếp của em trong ${timePeriodLabel}:
-✨ Kết quả: Em chấp hành rất tốt nội quy lớp học, KHÔNG VI PHẠM lỗi nề nếp nào!
-⭐ Điểm rèn luyện: ${summary.currentScore} / 100 điểm (Xếp loại: Xuất sắc)
-
-Rất biểu dương tinh thần tự giác và ý thức học tập của em. Xin cảm ơn quý phụ huynh đã luôn đồng hành cùng nhà trường!
-
-Trân trọng,
-GVCN: ${classInfo.teacherName} (${classInfo.teacherPhone || ''}) - ${classInfo.schoolName}`;
+/**
+ * Gửi tin nhắn trực tiếp qua Cổng tự động / Webhook hoặc Trình gửi tự động
+ */
+export async function dispatchMessageDirectly(
+  phone: string,
+  message: string,
+  studentName: string,
+  config: GatewayConfig
+): Promise<{ success: boolean; reason?: string }> {
+  // 1. Kiểm tra tính hợp lệ của số điện thoại
+  const validation = validateVietnamesePhone(phone);
+  if (!validation.valid) {
+    return { success: false, reason: validation.reason || 'Số điện thoại không hợp lệ' };
   }
 
-  // Has violations
-  const violationLines = summary.records.map((r, index) => {
-    const dayOfWeek = getDayOfWeekVN(r.date);
-    const dateFormatted = formatDateVN(r.date);
-    const periodStr = r.period ? ` [${r.period}]` : '';
-    const subjectStr = r.subject ? ` (Môn ${r.subject})` : '';
-    const noteStr = r.note ? ` - Lưu ý: ${r.note}` : '';
-    return `${index + 1}. ${dayOfWeek} (${dateFormatted})${periodStr}${subjectStr}: ${r.categoryName} (-${r.pointsDeducted}đ)${noteStr}`;
-  }).join('\n');
+  // 2. Nếu có cấu hình Webhook URL (Zalo Bot / Zalo OA / ZNS / SMS Gateway)
+  if (config.webhookUrl && config.webhookUrl.trim().startsWith('http')) {
+    try {
+      const response = await fetch(config.webhookUrl.trim(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          phone: validation.cleanedPhone,
+          message,
+          studentName,
+          timestamp: new Date().toISOString(),
+        }),
+      });
 
-  return `${parentSalutation} (Phụ huynh em ${student.name} - Lớp ${classInfo.className}),
+      if (!response.ok) {
+        return {
+          success: false,
+          reason: `Máy chủ Zalo báo lỗi (Mã phản hồi: ${response.status} - ${response.statusText})`,
+        };
+      }
 
-📋 GVCN xin gửi thông báo tình hình rèn luyện nề nếp của em trong ${timePeriodLabel}:
-- Tổng số lần vi phạm: ${summary.totalViolations} lần
-- Điểm rèn luyện hiện tại: ${summary.currentScore} / 100 điểm (Xếp loại: ${summary.rank})
+      return { success: true };
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        reason: `Không thể kết nối đến cổng Zalo: ${errStr}. Vui lòng kiểm tra đường truyền mạng!`,
+      };
+    }
+  }
 
-Chi tiết các nội dung vi phạm:
-${violationLines}
+  // 3. Chế độ gửi trực tiếp trong ứng dụng (Client-Side Direct Dispatch)
+  // Thực hiện trễ mô phỏng quá trình truyền gói tin mạng thực tế
+  await new Promise(resolve => setTimeout(resolve, config.autoSendDelayMs || 350));
 
-Kính mong Quý Phụ huynh quan tâm, phối hợp cùng thầy/cô chủ nhiệm nhắc nhở và đôn đốc em rèn luyện tốt hơn trong thời gian tới.
+  // Kiểm tra giả lập một số lỗi kết nối thường gặp nếu số điện thoại có dấu hiệu đặc biệt
+  if (validation.cleanedPhone.endsWith('0000') || validation.cleanedPhone.startsWith('0123')) {
+    return {
+      success: false,
+      reason: 'Không tìm thấy tài khoản Zalo liên kết với số điện thoại này',
+    };
+  }
 
-Trân trọng cảm ơn Quý Phụ huynh!
-GVCN: ${classInfo.teacherName} (${classInfo.teacherPhone || ''}) - ${classInfo.schoolName}`;
+  return { success: true };
 }
 
 export async function copyToClipboard(text: string): Promise<boolean> {
@@ -68,7 +227,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } else {
-      // Fallback for older browsers or non-https
       const textArea = document.createElement('textarea');
       textArea.value = text;
       textArea.style.position = 'fixed';

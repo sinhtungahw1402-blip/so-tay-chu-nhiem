@@ -1,15 +1,32 @@
 import React, { useState } from 'react';
-import { Student, ViolationCategory, ViolationRecord, ViolationGroup } from '../types';
+import { Student, ViolationCategory, ViolationRecord, ViolationGroup, ClassInfo } from '../types';
 import { getTodayDateString, formatDateVN, getDayOfWeekVN } from '../utils/date';
-import { CheckSquare, Calendar, Users, Search, Trash2, Plus, Check, Clock, BookOpen, AlertCircle } from 'lucide-react';
+import { generateCompactDailyMessage } from '../utils/zalo';
+import { BulkSendTarget } from '../components/BulkSendModal';
+import {
+  CheckSquare,
+  Calendar,
+  Users,
+  Search,
+  Trash2,
+  Plus,
+  Check,
+  Clock,
+  BookOpen,
+  AlertCircle,
+  Send,
+  MessageCircle
+} from 'lucide-react';
 
 interface CheckinViewProps {
   students: Student[];
   categories: ViolationCategory[];
   records: ViolationRecord[];
+  classInfo: ClassInfo;
   onSaveRecords: (newRecords: ViolationRecord[]) => void;
   onDeleteRecord: (id: string) => void;
   onOpenCategoryModal: () => void;
+  onOpenBulkSend: (targets: BulkSendTarget[], title: string, subtitle: string) => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -17,9 +34,11 @@ export const CheckinView: React.FC<CheckinViewProps> = ({
   students,
   categories,
   records,
+  classInfo,
   onSaveRecords,
   onDeleteRecord,
   onOpenCategoryModal,
+  onOpenBulkSend,
   onToast,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
@@ -42,6 +61,19 @@ export const CheckinView: React.FC<CheckinViewProps> = ({
 
   // Filter records for selected date
   const recordsForDate = records.filter(r => r.date === selectedDate);
+
+  // Group records by student for daily sending
+  const dailyStudentMap = new Map<string, { student: Student; records: ViolationRecord[] }>();
+  recordsForDate.forEach(r => {
+    const stu = students.find(s => s.id === r.studentId);
+    if (stu) {
+      if (!dailyStudentMap.has(stu.id)) {
+        dailyStudentMap.set(stu.id, { student: stu, records: [] });
+      }
+      dailyStudentMap.get(stu.id)!.records.push(r);
+    }
+  });
+  const dailyStudentsWithViolations = Array.from(dailyStudentMap.values());
 
   // Group categories by ViolationGroup
   const groups: ViolationGroup[] = ['Chuyên cần', 'Học tập', 'Kỷ luật - Tác phong', 'Vệ sinh - Lao động', 'Khác'];
@@ -164,6 +196,53 @@ export const CheckinView: React.FC<CheckinViewProps> = ({
     setSelectedStudentIds(new Set());
     setBatchNote('');
     onToast(`Đã lưu lỗi "${currentCat.name}" cho ${newRecords.length} học sinh!`, 'success');
+  };
+
+  // Trigger Bulk Send for the selected day
+  const handleOpenDailyBulkSend = () => {
+    if (dailyStudentsWithViolations.length === 0) {
+      onToast('Không có học sinh vi phạm nào trong ngày này để gửi!', 'info');
+      return;
+    }
+
+    const targets: BulkSendTarget[] = dailyStudentsWithViolations.map(item => ({
+      student: item.student,
+      records: item.records,
+      date: selectedDate,
+      message: generateCompactDailyMessage(
+        item.student.name,
+        classInfo.className,
+        selectedDate,
+        item.records
+      ),
+    }));
+
+    onOpenBulkSend(
+      targets,
+      `Gửi vi phạm ngày ${formatDateVN(selectedDate)}`,
+      `Gửi tự động cho ${targets.length} phụ huynh có con vi phạm hôm nay`
+    );
+  };
+
+  // Trigger Send for a single student on the selected day
+  const handleSendSingleDaily = (item: { student: Student; records: ViolationRecord[] }) => {
+    const target: BulkSendTarget = {
+      student: item.student,
+      records: item.records,
+      date: selectedDate,
+      message: generateCompactDailyMessage(
+        item.student.name,
+        classInfo.className,
+        selectedDate,
+        item.records
+      ),
+    };
+
+    onOpenBulkSend(
+      [target],
+      `Gửi vi phạm em ${item.student.name}`,
+      `Gửi tin nề nếp ngày ${formatDateVN(selectedDate)}`
+    );
   };
 
   const selectedStudent = students.find(s => s.id === selectedStudentId);
@@ -355,8 +434,7 @@ export const CheckinView: React.FC<CheckinViewProps> = ({
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500"
-                >
-                </input>
+                />
               </div>
             </div>
 
@@ -530,43 +608,84 @@ export const CheckinView: React.FC<CheckinViewProps> = ({
             <AlertCircle className="w-3.5 h-3.5 text-blue-600" />
             <span>Vi phạm ngày {formatDateVN(selectedDate)} ({recordsForDate.length} lượt)</span>
           </h3>
+          <span className="text-[11px] font-semibold text-slate-500">
+            {dailyStudentsWithViolations.length} học sinh
+          </span>
         </div>
+
+        {/* PROMINENT DAILY BULK SEND BUTTON */}
+        {dailyStudentsWithViolations.length > 0 && (
+          <button
+            type="button"
+            onClick={handleOpenDailyBulkSend}
+            className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-black shadow-md shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+          >
+            <Send className="w-4 h-4 text-yellow-300" />
+            <span>Gửi vi phạm ngày này cho PH ({dailyStudentsWithViolations.length} em - Hàng loạt)</span>
+          </button>
+        )}
 
         {recordsForDate.length === 0 ? (
           <p className="text-xs text-slate-400 py-3 text-center">
             Chưa có ghi nhận vi phạm nào trong ngày này.
           </p>
         ) : (
-          <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
-            {recordsForDate.map((r) => (
-              <div key={r.id} className="py-2.5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-900">{r.studentName}</p>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    {r.categoryName} <span className="text-rose-600 font-semibold">(-{r.pointsDeducted}đ)</span>
-                  </p>
-                  {(r.period || r.subject || r.note) && (
-                    <p className="text-[10px] text-slate-400">
-                      {r.period ? `${r.period} ` : ''}
-                      {r.subject ? `• Môn ${r.subject} ` : ''}
-                      {r.note ? `• ${r.note}` : ''}
-                    </p>
-                  )}
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {/* Grouped by student for clarity */}
+            {dailyStudentsWithViolations.map((item) => (
+              <div
+                key={item.student.id}
+                className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-xs">{item.student.name}</span>
+                    <span className="text-[10px] text-slate-500">({item.student.group || 'Lớp'})</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSendSingleDaily(item)}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] rounded-lg border border-emerald-200 transition-colors"
+                      title="Gửi riêng lỗi ngày này cho phụ huynh"
+                    >
+                      <MessageCircle className="w-3 h-3 text-emerald-600" />
+                      <span>Gửi tin</span>
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm(`Xóa ghi nhận lỗi "${r.categoryName}" của em ${r.studentName}?`)) {
-                      onDeleteRecord(r.id);
-                      onToast('Đã xóa ghi nhận vi phạm!', 'info');
-                    }
-                  }}
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
-                  title="Xóa lỗi này"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="space-y-1 pl-1 border-l-2 border-slate-200">
+                  {item.records.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between text-[11px] py-0.5">
+                      <div className="text-slate-700">
+                        <span>• {r.categoryName}</span>
+                        {(r.period || r.subject || r.note) && (
+                          <span className="text-[10px] text-slate-400 ml-1">
+                            ({r.period ? `${r.period} ` : ''}{r.subject ? `• Môn ${r.subject} ` : ''}{r.note ? `• ${r.note}` : ''})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-bold text-rose-600 text-[10px]">-{r.pointsDeducted}đ</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Xóa ghi nhận lỗi "${r.categoryName}" của em ${r.studentName}?`)) {
+                              onDeleteRecord(r.id);
+                              onToast('Đã xóa ghi nhận vi phạm!', 'info');
+                            }
+                          }}
+                          className="text-slate-400 hover:text-rose-600 p-0.5"
+                          title="Xóa lỗi"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

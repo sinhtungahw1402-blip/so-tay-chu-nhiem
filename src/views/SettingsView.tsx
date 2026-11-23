@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { ClassInfo, ViolationCategory, AppBackupData } from '../types';
-import { createBackupPayload, restoreBackupPayload, clearAllData, DEFAULT_VIOLATION_CATEGORIES, SAMPLE_STUDENTS, DEFAULT_CLASS_INFO } from '../utils/storage';
+import { ClassInfo, ViolationCategory, AppBackupData, GatewayConfig, FailedDispatchRecord } from '../types';
+import { createBackupPayload, restoreBackupPayload, clearAllData } from '../utils/storage';
+import { copyToClipboard } from '../utils/zalo';
+import { formatDateVN } from '../utils/date';
 import {
-  Settings,
   School,
   AlertOctagon,
   Download,
@@ -13,15 +14,23 @@ import {
   Trash2,
   Save,
   RotateCcw,
+  Info,
+  Radio,
+  PhoneOff,
+  Copy,
+  Phone,
   CheckCircle2,
-  AlertTriangle,
-  Info
+  Clock
 } from 'lucide-react';
 
 interface SettingsViewProps {
   classInfo: ClassInfo;
   categories: ViolationCategory[];
+  gatewayConfig: GatewayConfig;
+  failedDispatches: FailedDispatchRecord[];
   onSaveClassInfo: (info: ClassInfo) => void;
+  onSaveGatewayConfig: (config: GatewayConfig) => void;
+  onClearFailedDispatches: () => void;
   onOpenAddCategory: () => void;
   onOpenEditCategory: (category: ViolationCategory) => void;
   onDeleteCategory: (id: string) => void;
@@ -32,22 +41,65 @@ interface SettingsViewProps {
 export const SettingsView: React.FC<SettingsViewProps> = ({
   classInfo,
   categories,
+  gatewayConfig,
+  failedDispatches,
   onSaveClassInfo,
+  onSaveGatewayConfig,
+  onClearFailedDispatches,
   onOpenAddCategory,
   onOpenEditCategory,
   onDeleteCategory,
   onReloadAllData,
   onToast,
 }) => {
-  // Local state for Class Info Form
   const [formData, setFormData] = useState<ClassInfo>(classInfo);
+  const [gatewayForm, setGatewayForm] = useState<GatewayConfig>(gatewayConfig);
   const [restoreMode, setRestoreMode] = useState<'overwrite' | 'merge'>('overwrite');
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveInfo = (e: React.FormEvent) => {
     e.preventDefault();
     onSaveClassInfo(formData);
     onToast('Đã lưu thông tin lớp học thành công!', 'success');
+  };
+
+  const handleSaveGateway = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSaveGatewayConfig(gatewayForm);
+    onToast('Đã lưu cấu hình cổng gửi tin tự động!', 'success');
+  };
+
+  // Test webhook connection if configured
+  const handleTestWebhook = async () => {
+    if (!gatewayForm.webhookUrl || !gatewayForm.webhookUrl.trim().startsWith('http')) {
+      onToast('Vui lòng nhập đường dẫn Webhook hợp lệ (bắt đầu bằng http:// hoặc https://)!', 'error');
+      return;
+    }
+
+    setIsTestingWebhook(true);
+    try {
+      const res = await fetch(gatewayForm.webhookUrl.trim(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test: true,
+          message: 'Kiểm tra kết nối cổng gửi tự động Sổ Chủ Nhiệm Số',
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      if (res.ok) {
+        onToast('Kết nối cổng gửi Zalo/Webhook thành công!', 'success');
+      } else {
+        onToast(`Cổng phản hồi mã lỗi: ${res.status} (${res.statusText})`, 'error');
+      }
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      onToast(`Không thể kết nối đến Webhook: ${errStr}`, 'error');
+    } finally {
+      setIsTestingWebhook(false);
+    }
   };
 
   // Export Backup File (.json)
@@ -94,6 +146,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Copy failed list
+  const handleCopyFailedList = async () => {
+    if (failedDispatches.length === 0) return;
+    const lines = [
+      `📋 DANH SÁCH CÁC SỐ CHƯA GỬI ĐƯỢC ZALO (${failedDispatches.length} lượt):`,
+      ...failedDispatches.map((r, idx) => {
+        return `${idx + 1}. Em ${r.studentName} - SĐT: ${r.parentPhone || 'Chưa có'} (${r.date}): ${r.reason}`;
+      }),
+      `\n* GVCN liên hệ phụ huynh bằng cách gọi điện trực tiếp hoặc gửi tin nhắn SMS.`,
+    ];
+    const success = await copyToClipboard(lines.join('\n'));
+    if (success) {
+      onToast('Đã sao chép danh sách số chưa gửi được vào bộ nhớ tạm!', 'success');
+    }
+  };
+
   const handleResetSample = () => {
     if (confirm('Bạn có muốn khôi phục lại dữ liệu mẫu ban đầu để dùng thử nghiệm?')) {
       clearAllData();
@@ -112,7 +180,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <div>
             <h2 className="text-sm font-bold text-slate-800">Thông tin Lớp & GVCN</h2>
-            <p className="text-[11px] text-slate-500">Hiển thị trên phiếu báo cáo và tin nhắn gửi phụ huynh</p>
+            <p className="text-[11px] text-slate-500">Hiển thị trên thông báo và báo cáo</p>
           </div>
         </div>
 
@@ -195,7 +263,170 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </form>
       </div>
 
-      {/* 2. QUẢN LÝ DANH MỤC LỖI VI PHẠM (THÊM/SỬA/XÓA BỞI GVCN) */}
+      {/* 2. SỔ LƯU CÁC SỐ CHƯA GỬI ĐƯỢC ZALO (PERSISTENT LOG) */}
+      <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <PhoneOff className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">Các số chưa gửi được Zalo</h2>
+              <p className="text-[11px] text-slate-500">Lưu lại các số lỗi hoặc không tìm thấy để gọi lại</p>
+            </div>
+          </div>
+
+          {failedDispatches.length > 0 && (
+            <span className="text-xs font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+              {failedDispatches.length} số
+            </span>
+          )}
+        </div>
+
+        {failedDispatches.length === 0 ? (
+          <div className="p-4 bg-emerald-50/60 border border-emerald-100 rounded-2xl text-center text-xs text-emerald-800">
+            <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+            <p className="font-bold">Không có số điện thoại nào bị lỗi!</p>
+            <p className="text-[10px] text-emerald-600 mt-0.5">Tất cả phụ huynh đều đã được gửi tin thuận lợi.</p>
+          </div>
+        ) : (
+          <div className="space-y-2 pt-1 border-t border-slate-100 text-xs">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCopyFailedList}
+                className="flex-1 py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl border border-rose-200 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Sao chép danh sách ({failedDispatches.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Bạn có chắc muốn xóa lịch sử các số chưa gửi được?')) {
+                    onClearFailedDispatches();
+                    onToast('Đã xóa lịch sử số lỗi!', 'info');
+                  }
+                }}
+                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-colors"
+                title="Xóa danh sách"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              {failedDispatches.map((r) => (
+                <div
+                  key={r.id}
+                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-[11px]"
+                >
+                  <div className="min-w-0 flex-1 pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-900">{r.studentName}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {r.parentPhone || 'Chưa có SĐT'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-rose-600 mt-0.5 font-medium truncate">
+                      ⚠️ {r.reason} ({formatDateVN(r.date)})
+                    </p>
+                  </div>
+
+                  {r.parentPhone && (
+                    <a
+                      href={`tel:${r.parentPhone}`}
+                      className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-1 text-[10px] shrink-0 shadow-xs"
+                    >
+                      <Phone className="w-3 h-3" />
+                      <span>Gọi điện</span>
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. CẤU HÌNH CỔNG GỬI ZALO TỰ ĐỘNG (TÙY CHỌN) */}
+      <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
+            <Radio className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Cổng gửi tin tự động</h2>
+            <p className="text-[11px] text-slate-500">Tùy chọn kết nối Zalo Bot, ZNS hoặc Webhook</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveGateway} className="space-y-3 pt-1 border-t border-slate-100 text-xs">
+          <div className="p-3 bg-teal-50/60 border border-teal-100 rounded-2xl text-[11px] text-teal-900 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold">
+              <Info className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+              <span>Chế độ gửi trực tiếp mặc định:</span>
+            </div>
+            <p className="text-slate-600 leading-relaxed">
+              Mặc định ứng dụng sử dụng <strong>Trình gửi tự động tích hợp sẵn</strong>: Tự động kiểm tra số điện thoại, gửi hàng loạt và tự động bỏ qua số lỗi mà không làm gián đoạn danh sách. Nếu thầy/cô có Webhook Zalo Bot riêng, hãy dán liên kết bên dưới.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Đường dẫn Webhook Zalo Bot / Gateway (Tùy chọn):
+            </label>
+            <input
+              type="url"
+              placeholder="VD: https://zalo-bot.your-school.edu.vn/webhook hoặc bỏ trống"
+              value={gatewayForm.webhookUrl}
+              onChange={(e) => setGatewayForm({ ...gatewayForm, webhookUrl: e.target.value })}
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-teal-500 font-mono"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Tốc độ gửi giữa các tin:
+              </label>
+              <select
+                value={gatewayForm.autoSendDelayMs}
+                onChange={(e) => setGatewayForm({ ...gatewayForm, autoSendDelayMs: parseInt(e.target.value) || 400 })}
+                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
+              >
+                <option value={200}>Nhanh (200ms)</option>
+                <option value={400}>Bình thường (400ms)</option>
+                <option value={800}>Ổn định (800ms)</option>
+                <option value={1500}>Chậm (1.5s)</option>
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                disabled={isTestingWebhook || !gatewayForm.webhookUrl}
+                onClick={handleTestWebhook}
+                className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>{isTestingWebhook ? 'Đang thử...' : 'Thử kết nối'}</span>
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-2.5 px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-500/20 transition-all flex items-center justify-center gap-1.5"
+          >
+            <Save className="w-4 h-4" />
+            <span>Lưu cấu hình gửi</span>
+          </button>
+        </form>
+      </div>
+
+      {/* 4. QUẢN LÝ DANH MỤC LỖI VI PHẠM (THÊM/SỬA/XÓA BỞI GVCN) */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -257,7 +488,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* 3. SAO LƯU & PHỤC HỒI DỮ LIỆU ĐỔI ĐIỆN THOẠI */}
+      {/* 5. SAO LƯU & PHỤC HỒI DỮ LIỆU ĐỔI ĐIỆN THOẠI */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
@@ -269,18 +500,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* Explain local-first multi-device security */}
-        <div className="p-3 bg-purple-50/60 border border-purple-100 rounded-2xl text-[11px] text-purple-900 space-y-1">
-          <div className="flex items-center gap-1.5 font-bold">
-            <Info className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-            <span>Sử dụng trên nhiều điện thoại độc lập:</span>
-          </div>
-          <p className="text-slate-600 leading-relaxed">
-            Ứng dụng lưu trữ toàn bộ dữ liệu <strong>trực tiếp trong bộ nhớ của từng điện thoại</strong> (không dùng chung server). Giáo viên trường khác hoặc lớp khác trên máy của họ hoàn toàn không thể xem hay làm nhầm lẫn dữ liệu của thầy/cô!
-          </p>
-        </div>
-
-        {/* Backup and Restore Action Buttons */}
         <div className="space-y-2 pt-1 border-t border-slate-100 text-xs">
           <div>
             <button
@@ -290,9 +509,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Download className="w-4 h-4" />
               <span>Sao lưu dữ liệu ra file (.json)</span>
             </button>
-            <p className="text-[10px] text-slate-500 mt-1 text-center">
-              Tải file dự phòng về máy, có thể gửi qua Zalo &quot;Cloud của tôi&quot; hoặc Google Drive để lưu trữ.
-            </p>
           </div>
 
           <div className="pt-2">
@@ -306,7 +522,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     checked={restoreMode === 'overwrite'}
                     onChange={() => setRestoreMode('overwrite')}
                   />
-                  <span>Thay thế toàn bộ (Đổi máy)</span>
+                  <span>Thay thế toàn bộ</span>
                 </label>
                 <label className="flex items-center gap-1 text-[11px] cursor-pointer">
                   <input
@@ -336,20 +552,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </div>
         </div>
-
-        {/* How to transfer to new phone instruction */}
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 text-[11px]">
-          <p className="font-bold text-slate-800">📱 Hướng dẫn chuyển sang điện thoại mới:</p>
-          <ol className="list-decimal list-inside space-y-0.5 text-slate-600 pl-1">
-            <li>Trên điện thoại cũ: Bấm nút <strong>&quot;Sao lưu dữ liệu ra file (.json)&quot;</strong>.</li>
-            <li>Gửi file sao lưu đó qua Zalo sang điện thoại mới (hoặc lưu Google Drive).</li>
-            <li>Trên điện thoại mới: Mở ứng dụng, bấm <strong>&quot;Chọn file sao lưu (.json) để phục hồi&quot;</strong>.</li>
-            <li>Toàn bộ học sinh và lịch sử vi phạm sẽ xuất hiện ngay lập tức!</li>
-          </ol>
-        </div>
       </div>
 
-      {/* 4. DỮ LIỆU THỬ NGHIỆM */}
+      {/* 6. DỮ LIỆU THỬ NGHIỆM */}
       <div className="p-3 text-center">
         <button
           onClick={handleResetSample}

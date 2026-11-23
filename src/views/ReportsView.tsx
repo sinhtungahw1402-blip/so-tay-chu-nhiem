@@ -11,19 +11,17 @@ import {
   getDayOfWeekVN
 } from '../utils/date';
 import { exportViolationReportToExcel } from '../utils/excel';
-import { copyToClipboard } from '../utils/zalo';
+import { copyToClipboard, generateCompactPeriodMessage } from '../utils/zalo';
+import { BulkSendTarget } from '../components/BulkSendModal';
 import {
   Calendar,
-  Filter,
   FileSpreadsheet,
   Copy,
   Send,
-  Award,
-  AlertTriangle,
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  FileText
+  Users
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -31,6 +29,7 @@ interface ReportsViewProps {
   records: ViolationRecord[];
   classInfo: ClassInfo;
   onOpenSendZalo: (summary: StudentViolationSummary, timePeriodLabel: string) => void;
+  onOpenBulkSend: (targets: BulkSendTarget[], title: string, subtitle: string) => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -39,6 +38,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   records,
   classInfo,
   onOpenSendZalo,
+  onOpenBulkSend,
   onToast,
 }) => {
   const [filterType, setFilterType] = useState<TimeFilterType>('week');
@@ -173,7 +173,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     ];
 
     if (totalViolatedStudents > 0) {
-      textLines.push(`📋 Danh sách học sinh cần lưu ý nhắc nhở:`);
+      textLines.push(`📋 Danh sách học sinh có vi phạm:`);
       summaries.filter(s => s.totalViolations > 0).forEach((s, idx) => {
         textLines.push(`${idx + 1}. Em ${s.student.name} (${s.student.group || 'Tổ'}): ${s.totalViolations} lỗi (-${s.totalPointsDeducted}đ) -> Còn ${s.currentScore}đ [Xếp loại: ${s.rank}]`);
       });
@@ -189,6 +189,36 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     } else {
       onToast('Không thể sao chép tự động!', 'error');
     }
+  };
+
+  // Bulk send periodic report to all parents of violated students
+  const handleOpenPeriodBulkSend = () => {
+    const violatedSummaries = summaries.filter(s => s.totalViolations > 0);
+    if (violatedSummaries.length === 0) {
+      onToast('Không có học sinh nào vi phạm trong kỳ này để gửi!', 'info');
+      return;
+    }
+
+    const targets: BulkSendTarget[] = violatedSummaries.map(s => ({
+      student: s.student,
+      records: s.records,
+      date: startDate,
+      message: generateCompactPeriodMessage(
+        s.student.name,
+        classInfo.className,
+        timeLabel,
+        s.records,
+        s.totalViolations,
+        s.currentScore,
+        s.rank
+      ),
+    }));
+
+    onOpenBulkSend(
+      targets,
+      `Gửi báo cáo ${timeLabel}`,
+      `Gửi tự động cho ${targets.length} phụ huynh có con vi phạm trong kỳ này`
+    );
   };
 
   return (
@@ -306,6 +336,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       </div>
 
+      {/* PROMINENT BULK SEND FOR PERIOD BUTTON */}
+      {totalViolatedStudents > 0 && (
+        <button
+          type="button"
+          onClick={handleOpenPeriodBulkSend}
+          className="w-full py-3 px-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-black shadow-md shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+        >
+          <Send className="w-4 h-4 text-yellow-300" />
+          <span>Gửi báo cáo hàng loạt cho PH ({totalViolatedStudents} em có lỗi)</span>
+        </button>
+      )}
+
       {/* Class Action Bar: Copy summary to Zalo Group or Export Excel */}
       <div className="grid grid-cols-2 gap-2">
         <button
@@ -413,7 +455,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       className="flex items-center gap-1 px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 transition-all"
                     >
                       <Send className="w-3.5 h-3.5 text-yellow-300" />
-                      <span>Gửi Zalo</span>
+                      <span>Gửi tin</span>
                     </button>
 
                     <button

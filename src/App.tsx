@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   ClassInfo,
   Student,
   ViolationCategory,
   ViolationRecord,
-  StudentViolationSummary
+  StudentViolationSummary,
+  GatewayConfig,
+  FailedDispatchRecord
 } from './types';
 import {
   getStoredClassInfo,
@@ -14,7 +16,12 @@ import {
   getStoredCategories,
   saveCategories,
   getStoredRecords,
-  saveRecords
+  saveRecords,
+  getStoredGatewayConfig,
+  saveGatewayConfig,
+  getStoredFailedDispatches,
+  addFailedDispatches,
+  clearFailedDispatches
 } from './utils/storage';
 import { getTodayDateString } from './utils/date';
 
@@ -26,6 +33,7 @@ import { StudentModal } from './components/StudentModal';
 import { ExcelImportModal } from './components/ExcelImportModal';
 import { ViolationCategoryModal } from './components/ViolationCategoryModal';
 import { SendZaloModal } from './components/SendZaloModal';
+import { BulkSendModal, BulkSendTarget } from './components/BulkSendModal';
 
 import { OverviewView } from './views/OverviewView';
 import { CheckinView } from './views/CheckinView';
@@ -39,6 +47,8 @@ export const App: React.FC = () => {
   const [students, setStudents] = useState<Student[]>(getStoredStudents);
   const [categories, setCategories] = useState<ViolationCategory[]>(getStoredCategories);
   const [records, setRecords] = useState<ViolationRecord[]>(getStoredRecords);
+  const [gatewayConfig, setGatewayConfig] = useState<GatewayConfig>(getStoredGatewayConfig);
+  const [failedDispatches, setFailedDispatches] = useState<FailedDispatchRecord[]>(getStoredFailedDispatches);
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -58,6 +68,12 @@ export const App: React.FC = () => {
   const [isSendZaloOpen, setIsSendZaloOpen] = useState(false);
   const [selectedSummaryForZalo, setSelectedSummaryForZalo] = useState<StudentViolationSummary | null>(null);
   const [timePeriodLabelForZalo, setTimePeriodLabelForZalo] = useState<string>('');
+
+  // Bulk Send Modal state
+  const [isBulkSendOpen, setIsBulkSendOpen] = useState(false);
+  const [bulkSendTargets, setBulkSendTargets] = useState<BulkSendTarget[]>([]);
+  const [bulkSendTitle, setBulkSendTitle] = useState('');
+  const [bulkSendSubtitle, setBulkSendSubtitle] = useState('');
 
   // Toast Helper
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -81,7 +97,6 @@ export const App: React.FC = () => {
         updated = [...prev, savedStudent];
         addToast(`Đã thêm học sinh ${savedStudent.name} vào lớp!`, 'success');
       }
-      // Sort by STT
       updated.sort((a, b) => a.stt - b.stt);
       saveStudents(updated);
       return updated;
@@ -102,7 +117,6 @@ export const App: React.FC = () => {
       if (mode === 'replace') {
         updated = [...newStudents];
       } else {
-        // Append mode
         const existingMap = new Map(prev.map(s => [s.name.trim().toLowerCase(), s]));
         newStudents.forEach(s => {
           existingMap.set(s.name.trim().toLowerCase(), s);
@@ -164,19 +178,46 @@ export const App: React.FC = () => {
     saveClassInfo(newInfo);
   };
 
-  // Reload all from storage (e.g. after restore or sample reset)
+  // Gateway Config Actions
+  const handleSaveGatewayConfig = (config: GatewayConfig) => {
+    setGatewayConfig(config);
+    saveGatewayConfig(config);
+  };
+
+  // Failed Dispatches Actions
+  const handleSaveFailedRecords = (failedList: FailedDispatchRecord[]) => {
+    addFailedDispatches(failedList);
+    setFailedDispatches(getStoredFailedDispatches());
+  };
+
+  const handleClearFailedDispatches = () => {
+    clearFailedDispatches();
+    setFailedDispatches([]);
+  };
+
+  // Reload all from storage
   const handleReloadAllData = () => {
     setClassInfo(getStoredClassInfo());
     setStudents(getStoredStudents());
     setCategories(getStoredCategories());
     setRecords(getStoredRecords());
+    setGatewayConfig(getStoredGatewayConfig());
+    setFailedDispatches(getStoredFailedDispatches());
   };
 
-  // Open Zalo Modal for student
+  // Open Zalo Modal for single student
   const handleOpenSendZalo = (summary: StudentViolationSummary, timePeriodLabel: string) => {
     setSelectedSummaryForZalo(summary);
     setTimePeriodLabelForZalo(timePeriodLabel);
     setIsSendZaloOpen(true);
+  };
+
+  // Open Bulk Send Modal
+  const handleOpenBulkSend = (targets: BulkSendTarget[], title: string, subtitle: string) => {
+    setBulkSendTargets(targets);
+    setBulkSendTitle(title);
+    setBulkSendSubtitle(subtitle);
+    setIsBulkSendOpen(true);
   };
 
   // Calculate today's violations count for badge on BottomNav
@@ -205,12 +246,14 @@ export const App: React.FC = () => {
             students={students}
             categories={categories}
             records={records}
+            classInfo={classInfo}
             onSaveRecords={handleSaveRecords}
             onDeleteRecord={handleDeleteRecord}
             onOpenCategoryModal={() => {
               setEditingCategory(null);
               setIsCategoryModalOpen(true);
             }}
+            onOpenBulkSend={handleOpenBulkSend}
             onToast={addToast}
           />
         )}
@@ -239,6 +282,7 @@ export const App: React.FC = () => {
             records={records}
             classInfo={classInfo}
             onOpenSendZalo={handleOpenSendZalo}
+            onOpenBulkSend={handleOpenBulkSend}
             onToast={addToast}
           />
         )}
@@ -247,7 +291,11 @@ export const App: React.FC = () => {
           <SettingsView
             classInfo={classInfo}
             categories={categories}
+            gatewayConfig={gatewayConfig}
+            failedDispatches={failedDispatches}
             onSaveClassInfo={handleSaveClassInfo}
+            onSaveGatewayConfig={handleSaveGatewayConfig}
+            onClearFailedDispatches={handleClearFailedDispatches}
             onOpenAddCategory={() => {
               setEditingCategory(null);
               setIsCategoryModalOpen(true);
@@ -299,6 +347,17 @@ export const App: React.FC = () => {
         summary={selectedSummaryForZalo}
         classInfo={classInfo}
         timePeriodLabel={timePeriodLabelForZalo}
+        onToast={addToast}
+      />
+
+      <BulkSendModal
+        isOpen={isBulkSendOpen}
+        onClose={() => setIsBulkSendOpen(false)}
+        title={bulkSendTitle}
+        subtitle={bulkSendSubtitle}
+        targets={bulkSendTargets}
+        gatewayConfig={gatewayConfig}
+        onSaveFailedRecords={handleSaveFailedRecords}
         onToast={addToast}
       />
 

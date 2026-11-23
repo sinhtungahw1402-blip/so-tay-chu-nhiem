@@ -64,6 +64,31 @@ export interface StudentViolationSummary {
   rank: 'Tốt' | 'Khá' | 'Đạt' | 'Cần rèn luyện';
 }
 
+export interface FailedDispatchRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  parentPhone: string;
+  date: string;
+  reason: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface GatewayConfig {
+  webhookUrl: string; // Webhook Zalo Bot / Gateway
+  apiKey?: string;
+  autoSendDelayMs: number;
+}
+
+export interface BulkSendItem {
+  student: Student;
+  records: ViolationRecord[];
+  message: string;
+  status: 'idle' | 'sending' | 'success' | 'failed';
+  errorReason?: string;
+}
+
 export interface AppBackupData {
   version: string;
   appName: string;
@@ -72,4 +97,6 @@ export interface AppBackupData {
   students: Student[];
   violationCategories: ViolationCategory[];
   violationRecords: ViolationRecord[];
+  failedDispatches?: FailedDispatchRecord[];
+  gatewayConfig?: GatewayConfig;
 }

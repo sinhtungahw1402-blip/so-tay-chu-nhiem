@@ -1,10 +1,12 @@
-import { ClassInfo, Student, ViolationCategory, ViolationRecord, AppBackupData } from '../types';
+import { ClassInfo, Student, ViolationCategory, ViolationRecord, AppBackupData, FailedDispatchRecord, GatewayConfig } from '../types';
 
 const STORAGE_KEYS = {
   CLASS_INFO: 'sochunhiem_class_info_v1',
   STUDENTS: 'sochunhiem_students_v1',
   CATEGORIES: 'sochunhiem_categories_v1',
   RECORDS: 'sochunhiem_records_v1',
+  FAILED_DISPATCHES: 'sochunhiem_failed_dispatches_v1',
+  GATEWAY_CONFIG: 'sochunhiem_gateway_config_v1',
 };
 
 export const DEFAULT_CLASS_INFO: ClassInfo = {
@@ -15,6 +17,12 @@ export const DEFAULT_CLASS_INFO: ClassInfo = {
   schoolYear: '2026 - 2027',
   currentSemester: 'HK1',
   initialScore: 100,
+};
+
+export const DEFAULT_GATEWAY_CONFIG: GatewayConfig = {
+  webhookUrl: '',
+  apiKey: '',
+  autoSendDelayMs: 400,
 };
 
 export const DEFAULT_VIOLATION_CATEGORIES: ViolationCategory[] = [
@@ -50,8 +58,8 @@ export const SAMPLE_STUDENTS: Student[] = [
   { id: 'stu_4', stt: 4, name: 'Phạm Minh Đức', gender: 'Nam', dob: '2012-01-18', parentPhone: '0934567890', parentName: 'Bác Phạm Hùng', group: 'Tổ 2', notes: 'Tổ trưởng tổ 2' },
   { id: 'stu_5', stt: 5, name: 'Hoàng Thu Giang', gender: 'Nữ', dob: '2012-09-30', parentPhone: '0901234567', parentName: 'Cô Hoàng Thu Hà', group: 'Tổ 3', notes: '' },
   { id: 'stu_6', stt: 6, name: 'Vũ Quốc Huy', gender: 'Nam', dob: '2012-05-12', parentPhone: '0945678901', parentName: 'Bác Vũ Đình Khoa', group: 'Tổ 3', notes: '' },
-  { id: 'stu_7', stt: 7, name: 'Đặng Ngọc Linh', gender: 'Nữ', dob: '2012-12-04', parentPhone: '0967890123', parentName: 'Cô Nguyễn Thu Thủy', group: 'Tổ 4', notes: 'Tổ trưởng tổ 4' },
-  { id: 'stu_8', stt: 8, name: 'Bùi Tuấn Nam', gender: 'Nam', dob: '2012-04-20', parentPhone: '0988889999', parentName: 'Chú Bùi Văn Tuấn', group: 'Tổ 4', notes: '' },
+  { id: 'stu_7', stt: 7, name: 'Đặng Ngọc Linh', gender: 'Nữ', dob: '2012-12-04', parentPhone: '', parentName: 'Cô Nguyễn Thu Thủy', group: 'Tổ 4', notes: 'Tổ trưởng tổ 4 (Chưa có SĐT)' },
+  { id: 'stu_8', stt: 8, name: 'Bùi Tuấn Nam', gender: 'Nam', dob: '2012-04-20', parentPhone: '0123456789', parentName: 'Chú Bùi Văn Tuấn', group: 'Tổ 4', notes: 'SĐT đầu số cũ cần cập nhật' },
 ];
 
 export function getStoredClassInfo(): ClassInfo {
@@ -72,7 +80,6 @@ export function getStoredStudents(): Student[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.STUDENTS);
     if (!raw) {
-      // First time initialization with sample data
       localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(SAMPLE_STUDENTS));
       return SAMPLE_STUDENTS;
     }
@@ -117,16 +124,59 @@ export function saveRecords(records: ViolationRecord[]): void {
   localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(records));
 }
 
+// Failed Dispatches Log
+export function getStoredFailedDispatches(): FailedDispatchRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.FAILED_DISPATCHES);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveFailedDispatches(records: FailedDispatchRecord[]): void {
+  localStorage.setItem(STORAGE_KEYS.FAILED_DISPATCHES, JSON.stringify(records));
+}
+
+export function addFailedDispatches(newRecords: FailedDispatchRecord[]): void {
+  const current = getStoredFailedDispatches();
+  // Prepend newest first, keep up to 200 records
+  const updated = [...newRecords, ...current].slice(0, 200);
+  saveFailedDispatches(updated);
+}
+
+export function clearFailedDispatches(): void {
+  localStorage.removeItem(STORAGE_KEYS.FAILED_DISPATCHES);
+}
+
+// Gateway Config
+export function getStoredGatewayConfig(): GatewayConfig {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.GATEWAY_CONFIG);
+    if (!raw) return DEFAULT_GATEWAY_CONFIG;
+    return JSON.parse(raw);
+  } catch {
+    return DEFAULT_GATEWAY_CONFIG;
+  }
+}
+
+export function saveGatewayConfig(config: GatewayConfig): void {
+  localStorage.setItem(STORAGE_KEYS.GATEWAY_CONFIG, JSON.stringify(config));
+}
+
 // Backup & Restore
 export function createBackupPayload(): AppBackupData {
   return {
-    version: '1.0.0',
+    version: '1.1.0',
     appName: 'SoChuNhiemSo',
     exportedAt: new Date().toISOString(),
     classInfo: getStoredClassInfo(),
     students: getStoredStudents(),
     violationCategories: getStoredCategories(),
     violationRecords: getStoredRecords(),
+    failedDispatches: getStoredFailedDispatches(),
+    gatewayConfig: getStoredGatewayConfig(),
   };
 }
 
@@ -140,29 +190,32 @@ export function restoreBackupPayload(data: AppBackupData, mode: 'overwrite' | 'm
     saveStudents(data.students);
     saveCategories(data.violationCategories || DEFAULT_VIOLATION_CATEGORIES);
     saveRecords(data.violationRecords || []);
+    if (data.failedDispatches) saveFailedDispatches(data.failedDispatches);
+    if (data.gatewayConfig) saveGatewayConfig(data.gatewayConfig);
   } else {
-    // Merge mode: keep existing, append or update
+    // Merge mode
     const curStudents = getStoredStudents();
     const curRecords = getStoredRecords();
     const curCategories = getStoredCategories();
 
-    // Merge students by phone or id
     const studentMap = new Map<string, Student>();
     curStudents.forEach(s => studentMap.set(s.id, s));
     data.students.forEach(s => studentMap.set(s.id, s));
     saveStudents(Array.from(studentMap.values()));
 
-    // Merge categories
     const catMap = new Map<string, ViolationCategory>();
     curCategories.forEach(c => catMap.set(c.id, c));
     (data.violationCategories || []).forEach(c => catMap.set(c.id, c));
     saveCategories(Array.from(catMap.values()));
 
-    // Merge records
     const recordMap = new Map<string, ViolationRecord>();
     curRecords.forEach(r => recordMap.set(r.id, r));
     (data.violationRecords || []).forEach(r => recordMap.set(r.id, r));
     saveRecords(Array.from(recordMap.values()));
+
+    if (data.failedDispatches && data.failedDispatches.length > 0) {
+      addFailedDispatches(data.failedDispatches);
+    }
   }
 
   return { success: true, message: 'Phục hồi dữ liệu thành công!' };
@@ -173,4 +226,6 @@ export function clearAllData(): void {
   localStorage.removeItem(STORAGE_KEYS.STUDENTS);
   localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
   localStorage.removeItem(STORAGE_KEYS.RECORDS);
+  localStorage.removeItem(STORAGE_KEYS.FAILED_DISPATCHES);
+  localStorage.removeItem(STORAGE_KEYS.GATEWAY_CONFIG);
 }
