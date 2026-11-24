@@ -56,8 +56,8 @@ export async function downloadFromCloudSync(
     }
 
     const topic = `${SYNC_TOPIC_PREFIX}${cleanPin}`;
-    // Poll the topic cache
-    const pollUrl = `https://ntfy.sh/${topic}/json?poll=1`;
+    // Poll the topic cache with since=all to retrieve past cached backup
+    const pollUrl = `https://ntfy.sh/${topic}/json?poll=1&since=all`;
     const response = await fetch(pollUrl);
 
     if (!response.ok) {
