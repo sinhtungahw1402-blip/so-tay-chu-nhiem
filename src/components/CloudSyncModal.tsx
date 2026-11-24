@@ -52,16 +52,17 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     setIsUploading(true);
     setUploadSuccess(false);
     const pin = generateSyncPin();
-    setGeneratedPin(pin);
 
     const payload = createBackupPayload();
     const result = await uploadToCloudSync(payload, pin);
 
     setIsUploading(false);
     if (result.success) {
+      setGeneratedPin(pin);
       setUploadSuccess(true);
       onToast(`Đã tạo mã PIN ${pin}! Dữ liệu đã sẵn sàng để đồng bộ sang máy tính.`, 'success');
     } else {
+      setGeneratedPin('');
       onToast(result.error || 'Lỗi khi tải dữ liệu lên đám mây!', 'error');
     }
   };

@@ -28,8 +28,6 @@ export async function uploadToCloudSync(
       method: 'PUT',
       headers: {
         'Filename': 'backup.json',
-        'Title': `Đồng bộ lớp ${payload.classInfo?.className || ''}`,
-        'Tags': 'school,backup',
       },
       body: payloadStr,
     });
