@@ -1,13 +1,14 @@
 import React from 'react';
 import { ClassInfo } from '../types';
-import { GraduationCap, ShieldCheck } from 'lucide-react';
+import { GraduationCap, Cloud } from 'lucide-react';
 
 interface NavbarProps {
   classInfo: ClassInfo;
   activeTab: string;
+  onOpenCloudSync?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ classInfo }) => {
+export const Navbar: React.FC<NavbarProps> = ({ classInfo, onOpenCloudSync }) => {
   return (
     <header className="sticky top-0 z-30 bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white shadow-md pt-[var(--sat)]">
       <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
@@ -30,10 +31,17 @@ export const Navbar: React.FC<NavbarProps> = ({ classInfo }) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs bg-white/10 px-2.5 py-1 rounded-full border border-white/15 text-blue-50">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
-          <span className="text-[11px] font-medium">Offline/Riêng tư</span>
-        </div>
+        {onOpenCloudSync && (
+          <button
+            type="button"
+            onClick={onOpenCloudSync}
+            className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 active:scale-95 px-2.5 py-1.5 rounded-xl border border-white/30 text-white font-bold transition-all shadow-xs"
+            title="Đồng bộ nhanh Đám mây qua mã PIN 6 số"
+          >
+            <Cloud className="w-3.5 h-3.5 text-yellow-300" />
+            <span className="text-[11px]">Đồng bộ PIN</span>
+          </button>
+        )}
       </div>
     </header>
   );

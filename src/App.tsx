@@ -34,6 +34,7 @@ import { ExcelImportModal } from './components/ExcelImportModal';
 import { ViolationCategoryModal } from './components/ViolationCategoryModal';
 import { SendZaloModal } from './components/SendZaloModal';
 import { BulkSendModal, BulkSendTarget } from './components/BulkSendModal';
+import { CloudSyncModal } from './components/CloudSyncModal';
 
 import { OverviewView } from './views/OverviewView';
 import { CheckinView } from './views/CheckinView';
@@ -74,6 +75,9 @@ export const App: React.FC = () => {
   const [bulkSendTargets, setBulkSendTargets] = useState<BulkSendTarget[]>([]);
   const [bulkSendTitle, setBulkSendTitle] = useState('');
   const [bulkSendSubtitle, setBulkSendSubtitle] = useState('');
+
+  // Cloud PIN Sync Modal state
+  const [isCloudSyncOpen, setIsCloudSyncOpen] = useState(false);
 
   // Toast Helper
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -227,7 +231,11 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col antialiased selection:bg-blue-200">
       {/* Top Mobile Navbar */}
-      <Navbar classInfo={classInfo} activeTab={activeTab} />
+      <Navbar
+        classInfo={classInfo}
+        activeTab={activeTab}
+        onOpenCloudSync={() => setIsCloudSyncOpen(true)}
+      />
 
       {/* Main View Container */}
       <main className="flex-1 w-full max-w-md mx-auto">
@@ -306,6 +314,7 @@ export const App: React.FC = () => {
             }}
             onDeleteCategory={handleDeleteCategory}
             onReloadAllData={handleReloadAllData}
+            onOpenCloudSync={() => setIsCloudSyncOpen(true)}
             onToast={addToast}
           />
         )}
@@ -359,6 +368,20 @@ export const App: React.FC = () => {
         className={classInfo.className}
         gatewayConfig={gatewayConfig}
         onSaveFailedRecords={handleSaveFailedRecords}
+        onToast={addToast}
+      />
+
+      <CloudSyncModal
+        isOpen={isCloudSyncOpen}
+        onClose={() => setIsCloudSyncOpen(false)}
+        onRestoreSuccess={(data) => {
+          setClassInfo(data.classInfo);
+          setStudents(data.students);
+          setCategories(data.violationCategories);
+          setRecords(data.violationRecords);
+          if (data.gatewayConfig) setGatewayConfig(data.gatewayConfig);
+          if (data.failedDispatches) setFailedDispatches(data.failedDispatches);
+        }}
         onToast={addToast}
       />
 

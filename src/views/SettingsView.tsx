@@ -20,7 +20,9 @@ import {
   Copy,
   Phone,
   CheckCircle2,
-  Clock
+  Clock,
+  Cloud,
+  Sparkles
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -35,6 +37,7 @@ interface SettingsViewProps {
   onOpenEditCategory: (category: ViolationCategory) => void;
   onDeleteCategory: (id: string) => void;
   onReloadAllData: () => void;
+  onOpenCloudSync?: () => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -50,6 +53,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenEditCategory,
   onDeleteCategory,
   onReloadAllData,
+  onOpenCloudSync,
   onToast,
 }) => {
   const [formData, setFormData] = useState<ClassInfo>(classInfo);
@@ -488,7 +492,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* 5. SAO LƯU & PHỤC HỒI DỮ LIỆU ĐỔI ĐIỆN THOẠI */}
+      {/* 5. ĐỒNG BỘ ĐÁM MÂY (MÃ PIN 6 SỐ) */}
+      <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 p-4 rounded-3xl border-2 border-indigo-200 shadow-xs space-y-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+            <Cloud className="w-5 h-5 text-yellow-300" />
+          </div>
+          <div>
+            <h2 className="text-sm font-extrabold text-indigo-950 flex items-center gap-1.5">
+              <span>Đồng bộ nhanh Điện thoại & Máy tính</span>
+              <span className="text-[10px] bg-indigo-200 text-indigo-900 font-black px-1.5 py-0.5 rounded-full">
+                Mã PIN 6 số
+              </span>
+            </h2>
+            <p className="text-[11px] text-indigo-700">Chuyển dữ liệu sang máy tính dùng Zalo Web tức thì</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpenCloudSync}
+          className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-black text-xs rounded-2xl shadow-md shadow-indigo-500/25 transition-all flex items-center justify-center gap-2"
+        >
+          <Sparkles className="w-4 h-4 text-yellow-300" />
+          <span>Mở tính năng Đồng bộ Đám mây (Mã PIN)</span>
+        </button>
+      </div>
+
+      {/* 6. SAO LƯU & PHỤC HỒI DỮ LIỆU ĐỔI ĐIỆN THOẠI (FILE .JSON) */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
