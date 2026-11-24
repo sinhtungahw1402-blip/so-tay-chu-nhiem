@@ -9,6 +9,7 @@ import {
   generateClassPeriodSummaryMessage,
   shareViaMobile
 } from '../utils/zalo';
+import { generateZaloWebAutoScript } from '../utils/zaloWebScript';
 import {
   X,
   Send,
@@ -28,7 +29,10 @@ import {
   HelpCircle,
   ChevronRight,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  Bot,
+  Terminal,
+  Monitor
 } from 'lucide-react';
 
 export interface BulkSendTarget {
@@ -63,8 +67,9 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
   onSaveFailedRecords,
   onToast,
 }) => {
-  // Modal Mode: 'group' (Gửi vào nhóm Zalo lớp - 1 chạm cả lớp) or 'individual' (Gửi riêng từng phụ huynh)
-  const [sendMode, setSendMode] = useState<'group' | 'individual'>('group');
+  // Modal Mode: 'group' (Gửi vào nhóm Zalo lớp), 'individual' (Gửi riêng từng PH), 'zaloweb' (Tự động Zalo Web trên máy tính)
+  const [sendMode, setSendMode] = useState<'group' | 'individual' | 'zaloweb'>('group');
+  const [hasCopiedScript, setHasCopiedScript] = useState(false);
 
   // Selected targets for individual queue
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -130,6 +135,17 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
     if (!shared) {
       // Open Zalo web/app
       window.open('https://zalo.me/', '_blank');
+    }
+  };
+
+  // Handler: Copy Zalo Web Auto Script
+  const handleCopyZaloWebScript = async () => {
+    const script = generateZaloWebAutoScript(targets, className);
+    const ok = await copyToClipboard(script);
+    if (ok) {
+      setHasCopiedScript(true);
+      onToast('Đã sao chép đoạn mã tự động! Hãy mở Zalo Web (chat.zalo.me) để dán và chạy.', 'success');
+      setTimeout(() => setHasCopiedScript(false), 5000);
     }
   };
 
@@ -329,37 +345,50 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
           </button>
         </div>
 
-        {/* 2 Main Send Modes Switching Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-100/70 p-1.5 gap-1.5">
+        {/* 3 Main Send Modes Switching Tabs */}
+        <div className="flex border-b border-slate-200 bg-slate-100/70 p-1.5 gap-1 overflow-x-auto">
           <button
             type="button"
             onClick={() => setSendMode('group')}
-            className={`flex-1 py-2.5 px-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+            className={`py-2 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all flex items-center justify-center gap-1.5 shrink-0 sm:flex-1 ${
               sendMode === 'group'
                 ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Users className="w-4 h-4 text-blue-600" />
-            <span>Gửi vào Nhóm Zalo lớp</span>
-            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full">
-              Khuyên dùng (1 chạm)
+            <Users className="w-3.5 h-3.5 text-blue-600" />
+            <span>Nhóm Zalo lớp</span>
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full hidden sm:inline">
+              1 chạm
             </span>
           </button>
 
           <button
             type="button"
             onClick={() => setSendMode('individual')}
-            className={`flex-1 py-2.5 px-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+            className={`py-2 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all flex items-center justify-center gap-1.5 shrink-0 sm:flex-1 ${
               sendMode === 'individual'
                 ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <MessageCircle className="w-4 h-4 text-indigo-600" />
-            <span>Gửi riêng từng phụ huynh</span>
-            <span className="text-[10px] bg-slate-200 text-slate-700 font-semibold px-1.5 py-0.2 rounded-full">
-              Tuần tự 1-chạm
+            <MessageCircle className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Gửi riêng 1-chạm</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSendMode('zaloweb')}
+            className={`py-2 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all flex items-center justify-center gap-1.5 shrink-0 sm:flex-1 ${
+              sendMode === 'zaloweb'
+                ? 'bg-white text-purple-700 shadow-sm border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5 text-purple-600" />
+            <span>Tự động Zalo Web</span>
+            <span className="text-[9px] bg-yellow-400 text-purple-950 font-black px-1.5 py-0.5 rounded-full">
+              HOT (PC)
             </span>
           </button>
         </div>
@@ -676,6 +705,93 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
             </div>
           )}
 
+          {/* ================= MODE 3: AUTOMATION ON ZALO WEB (PC / LAPTOP) ================= */}
+          {sendMode === 'zaloweb' && (
+            <div className="space-y-4 animate-in fade-in duration-150">
+              {/* Highlight Banner */}
+              <div className="p-4 bg-gradient-to-r from-blue-700 via-indigo-600 to-purple-700 text-white rounded-3xl shadow-md space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-white/20 rounded-xl backdrop-blur-xs">
+                    <Bot className="w-5 h-5 text-yellow-300" />
+                  </div>
+                  <span className="font-extrabold text-xs sm:text-sm">Công cụ Tự động gửi tin nhắn trên Zalo Web (Máy tính)</span>
+                </div>
+                <p className="text-[11px] text-blue-100 leading-relaxed">
+                  Thầy/Cô không cần phải bấm từng phụ huynh nữa! Công cụ này sẽ chạy trực tiếp trên trang <strong>Zalo Web (chat.zalo.me)</strong>: tự động tìm từng số điện thoại, tự động dán tin nhắn vi phạm riêng và tự động bấm gửi lần lượt cho toàn bộ <strong>{targets.length} học sinh</strong>.
+                </p>
+              </div>
+
+              {/* Primary Action Button */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleCopyZaloWebScript}
+                  className="w-full py-4 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                >
+                  {hasCopiedScript ? (
+                    <>
+                      <Check className="w-5 h-5 text-yellow-300 stroke-[3]" />
+                      <span>ĐÃ CHÉP MÃ TỰ ĐỘNG! SẴN SÀNG MỞ ZALO WEB</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5 text-yellow-300" />
+                      <span>📋 SAO CHÉP MÃ TỰ ĐỘNG GỬI CHO {targets.length} EM</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href="https://chat.zalo.me"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Mở Zalo Web (chat.zalo.me) trong tab mới</span>
+                </a>
+              </div>
+
+              {/* 3 Step Visual Guide */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div className="font-extrabold text-xs text-slate-800 flex items-center gap-1.5">
+                  <Terminal className="w-4 h-4 text-blue-600" />
+                  <span>Hướng dẫn 3 bước cực dễ để chạy trên Zalo Web:</span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-slate-700">
+                  <div className="flex items-start gap-2.5 p-2 bg-white rounded-xl border border-slate-200/80">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                    <div>
+                      <strong>Mở Zalo Web:</strong> Mở tab <span className="text-blue-600 font-bold font-mono">chat.zalo.me</span> trên trình duyệt máy tính (nơi Thầy/Cô đã đăng nhập Zalo).
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 p-2 bg-white rounded-xl border border-slate-200/80">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                    <div>
+                      <strong>Mở Bảng điều khiển Console:</strong> Nhấn phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono font-bold text-[11px]">F12</kbd> (hoặc click chuột phải vào màn hình Zalo chọn <em>Kiểm tra / Inspect</em>) ➔ bấm vào thẻ <strong>Console</strong>.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 p-2 bg-white rounded-xl border border-slate-200/80">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">3</span>
+                    <div>
+                      <strong>Dán mã và bấm Enter:</strong> Nhấn <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono font-bold text-[11px]">Ctrl + V</kbd> để dán đoạn mã vừa chép ở trên rồi gõ phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono font-bold text-[11px]">Enter</kbd>.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 leading-relaxed flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Kết quả:</strong> Trên góc phải Zalo Web sẽ xuất hiện ngay <strong>Bảng điều khiển màu xanh</strong> có danh sách cả {targets.length} học sinh. Thầy/Cô chỉ cần bấm <strong>&quot;▶ BẮT ĐẦU GỬI TỰ ĐỘNG&quot;</strong>, máy tính sẽ tự động tìm kiếm từng số, điền tin nhắn và gửi lần lượt từ đầu đến cuối!
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Modal Bottom Footer */}
@@ -691,6 +807,8 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
           <span className="text-[11px] text-slate-500 font-medium">
             {sendMode === 'group'
               ? '💡 Gửi 1 tin duy nhất vào nhóm Zalo lớp'
+              : sendMode === 'zaloweb'
+              ? '🤖 Chạy tự động 100% trên Zalo Web (chat.zalo.me)'
               : `Tiến độ gửi riêng: ${successTargets.length}/${targets.length} em`}
           </span>
         </div>
