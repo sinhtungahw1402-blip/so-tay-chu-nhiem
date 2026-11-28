@@ -164,7 +164,7 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
   }
 
   function applyParsedPayload(rawText) {
-    if (!rawText) return false;
+    if (!rawText || isRunning) return false;
     var trimmed = rawText.trim();
     var idx = trimmed.indexOf(BATCH_PREFIX);
     if (idx === -1) return false;
@@ -177,8 +177,12 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
       headerTitle.innerText = '🏫 Sổ Chủ Nhiệm Lớp ' + className;
       headerSubtitle.innerText = scriptSubTitle;
       countTotal.innerText = String(targets.length);
+      statusLabel.innerText = 'Sẵn sàng';
       progressText.innerText = '0 / ' + targets.length;
       progressBar.style.width = '0%';
+      startBtn.innerText = '▶ BẮT ĐẦU GỬI TỰ ĐỘNG';
+      startBtn.style.display = 'block';
+      stopBtn.style.display = 'none';
       pasteArea.style.display = 'none';
       mainArea.style.display = 'flex';
       renderList();
@@ -193,8 +197,10 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
   } else {
     if (navigator.clipboard && navigator.clipboard.readText) {
       navigator.clipboard.readText().then(function(clipText) {
-        if (!applyParsedPayload(clipText)) {
-          pasteInput.focus();
+        if (targets.length === 0 && !isRunning) {
+          if (!applyParsedPayload(clipText)) {
+            pasteInput.focus();
+          }
         }
       }).catch(function() {
         pasteInput.focus();
@@ -236,8 +242,169 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
     inputEl.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  function triggerFullClick(el) {
+    if (!el) return;
+    var rect = el.getBoundingClientRect();
+    var opts = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2
+    };
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function(evtType) {
+      el.dispatchEvent(new MouseEvent(evtType, opts));
+    });
+    if (typeof el.click === 'function') {
+      el.click();
+    }
+  }
+
+  function findChatInputContainer(chatInput) {
+    var cur = chatInput;
+    var inputRect = chatInput.getBoundingClientRect();
+    var best = chatInput.parentElement;
+    for (var up = 0; up < 5 && cur && cur.parentElement; up++) {
+      cur = cur.parentElement;
+      if (cur === document.body) break;
+      var r = cur.getBoundingClientRect();
+      if (r.width >= inputRect.width && r.height <= 300) {
+        best = cur;
+      }
+    }
+    return best || document;
+  }
+
+  function findZaloSendButton(chatInput) {
+    var inputRect = chatInput.getBoundingClientRect();
+    var container = findChatInputContainer(chatInput);
+
+    var selectors = [
+      '#send-btn',
+      '#sendBtn',
+      '#send-msg-btn',
+      '[data-id="btn_Send"]',
+      '[data-id="btn_SendMsg"]',
+      '[data-id*="btn_Send" i]',
+      '[data-translate-title*="SEND" i]',
+      '[data-translate-inner*="STR_SEND" i]',
+      '.send-msg-btn',
+      '.btn-send-msg',
+      '.btn-send',
+      '.send-btn',
+      '.chat-input__send',
+      '.chat-input__btn[icon*="send" i]',
+      '[icon*="send" i]',
+      '[class*="icon-send" i]',
+      '[class*="send-btn" i]',
+      '[class*="btn-send" i]',
+      '[class*="Send_24" i]',
+      '[class*="Sent_24" i]',
+      '[title*="Gửi" i]',
+      '[title*="Send" i]',
+      '[aria-label*="Gửi" i]',
+      '[aria-label*="Send" i]'
+    ];
+
+    for (var s = 0; s < selectors.length; s++) {
+      try {
+        var found = container.querySelectorAll(selectors[s]);
+        if (!found || found.length === 0) found = document.querySelectorAll(selectors[s]);
+        for (var f = 0; f < found.length; f++) {
+          var el = found[f];
+          if (panel.contains(el) || chatInput.contains(el)) continue;
+          var r = el.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0 && r.top >= window.innerHeight * 0.4 && r.left >= inputRect.left) {
+            return el;
+          }
+        }
+      } catch (e) {}
+    }
+
+    var allEls = container.querySelectorAll('button, a, div, span, i, svg');
+    var bestCandidate = null;
+    var maxRight = -1;
+    for (var j = 0; j < allEls.length; j++) {
+      var cand = allEls[j];
+      if (panel.contains(cand) || chatInput.contains(cand) || cand.contains(chatInput)) continue;
+      var cr = cand.getBoundingClientRect();
+      if (
+        cr.width >= 16 && cr.width <= 72 &&
+        cr.height >= 16 && cr.height <= 72 &&
+        cr.top >= inputRect.top - 15 &&
+        cr.bottom <= window.innerHeight &&
+        cr.left >= inputRect.left + inputRect.width * 0.65
+      ) {
+        if (cr.right > maxRight) {
+          maxRight = cr.right;
+          bestCandidate = cand;
+        }
+      }
+    }
+    return bestCandidate;
+  }
+
+  function isChatInputCleared(chatInput) {
+    if (!document.body.contains(chatInput)) return true;
+    var text = (chatInput.innerText || chatInput.textContent || '').replace(/[\\u200B\\r\\n\\s]+/g, '');
+    return text.length === 0;
+  }
+
+  async function submitChatMessage(chatInput) {
+    var sendBtn = findZaloSendButton(chatInput);
+    if (sendBtn) {
+      triggerFullClick(sendBtn);
+      var clickableParent = sendBtn.closest('[role="button"], button, a, div[tabindex], div[class*="btn"], span[class*="btn"]');
+      if (clickableParent && clickableParent !== sendBtn && !panel.contains(clickableParent)) {
+        triggerFullClick(clickableParent);
+      }
+      await sleep(350);
+      if (isChatInputCleared(chatInput)) return true;
+    }
+
+    var container = findChatInputContainer(chatInput);
+    var inputRect = chatInput.getBoundingClientRect();
+    var allRightIcons = [];
+    var els = container.querySelectorAll('button, a, div, span, i, svg');
+    for (var k = 0; k < els.length; k++) {
+      var item = els[k];
+      if (panel.contains(item) || chatInput.contains(item) || item.contains(chatInput)) continue;
+      var ir = item.getBoundingClientRect();
+      if (
+        ir.width >= 16 && ir.width <= 72 &&
+        ir.height >= 16 && ir.height <= 72 &&
+        ir.top >= inputRect.top - 15 &&
+        ir.left >= inputRect.left + inputRect.width * 0.65
+      ) {
+        allRightIcons.push({ el: item, right: ir.right });
+      }
+    }
+    allRightIcons.sort(function(a, b) { return b.right - a.right; });
+    for (var rIdx = 0; rIdx < Math.min(allRightIcons.length, 3); rIdx++) {
+      triggerFullClick(allRightIcons[rIdx].el);
+      await sleep(300);
+      if (isChatInputCleared(chatInput)) return true;
+    }
+
+    chatInput.focus();
+    ['keydown', 'keypress', 'keyup'].forEach(function(type) {
+      chatInput.dispatchEvent(new KeyboardEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        keyCode: 13,
+        which: 13,
+        key: 'Enter',
+        code: 'Enter',
+        shiftKey: false
+      }));
+    });
+    await sleep(400);
+    return isChatInputCleared(chatInput);
+  }
+
   async function sendToStudent(target) {
     target.status = 'sending';
+    target.reason = '';
     renderList();
     statusLabel.innerText = 'Đang xử lý em ' + target.studentName + '...';
 
@@ -289,7 +456,7 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
     }
 
     targetResult.click();
-    await sleep(1200);
+    await sleep(1300);
 
     var chatInput = document.getElementById('richInput')
       || document.querySelector('div[contenteditable="true"].rich-input')
@@ -306,24 +473,15 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
     document.execCommand('selectAll', false, null);
     document.execCommand('insertText', false, target.message);
 
-    await sleep(600);
+    await sleep(800);
 
-    var sendBtn = document.querySelector('.btn-send, [data-translate-inner="STR_SEND"], .chat-input__send');
-    if (sendBtn) {
-      sendBtn.click();
+    var sentOk = await submitChatMessage(chatInput);
+    if (sentOk) {
+      target.status = 'success';
     } else {
-      var enterEvent = new KeyboardEvent('keydown', {
-        bubbles: true,
-        cancelable: true,
-        keyCode: 13,
-        key: 'Enter',
-        code: 'Enter',
-        which: 13
-      });
-      chatInput.dispatchEvent(enterEvent);
+      target.status = 'failed';
+      target.reason = 'Đã dán tin nhưng Zalo chặn nút Gửi tự động';
     }
-
-    target.status = 'success';
     renderList();
   }
 
@@ -340,6 +498,11 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
       progressText.innerText = (i + 1) + ' / ' + targets.length;
       progressBar.style.width = Math.round(((i + 1) / targets.length) * 100) + '%';
 
+      if (targets[i].status === 'success') {
+        successCount++;
+        continue;
+      }
+
       await sendToStudent(targets[i]);
 
       if (targets[i].status === 'success') successCount++;
@@ -353,11 +516,11 @@ function buildZaloWebRunnerScript(embeddedPayloadExpr: string): string {
 
     isRunning = false;
     startBtn.style.display = 'block';
-    startBtn.innerText = '↺ GỬI LẠI CÁC SỐ LỖI';
+    startBtn.innerText = failedCount > 0 ? '↺ GỬI LẠI CÁC SỐ LỖI' : '✓ ĐÃ HOÀN TẤT TOÀN BỘ';
     stopBtn.style.display = 'none';
     statusLabel.innerText = 'Hoàn tất!';
 
-    alert('🎉 HOÀN TẤT GỬI TIN TRÊN ZALO WEB!\\n- Thành công: ' + successCount + ' em\\n- Không gửi được: ' + failedCount + ' em');
+    alert('🎉 HOÀN TẤT GỬI TIN TRÊN ZALO WEB!\\n- Đã gửi thành công: ' + successCount + ' em\\n- Chưa gửi được: ' + failedCount + ' em');
   }
 
   startBtn.onclick = function() {

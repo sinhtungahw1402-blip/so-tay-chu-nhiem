@@ -1,5 +1,5 @@
 // Cache name - bumped to invalidate stale cache
-const CACHE_NAME = 'so-chu-nhiem-v7';
+const CACHE_NAME = 'so-chu-nhiem-v8';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
