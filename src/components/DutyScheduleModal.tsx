@@ -1,8 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import html2canvas from 'html2canvas';
 import { ClassInfo, StudentViolationSummary } from '../types';
 import { DutySortMode, generateDutySchedule, generateDutyScheduleText } from '../utils/dutySchedule';
 import { copyToClipboard, shareViaMobile } from '../utils/zalo';
+import { exportElementToCanvas, canvasToPngBlob, triggerPngDownload } from '../utils/imageExport';
 import { DutyScheduleCard } from './DutyScheduleCard';
 import {
   X,
@@ -85,29 +85,14 @@ export const DutyScheduleModal: React.FC<DutyScheduleModalProps> = ({
     }
   };
 
-  const generateCardCanvas = async (): Promise<HTMLCanvasElement | null> => {
-    if (!cardRef.current) return null;
-    return await html2canvas(cardRef.current, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-    });
-  };
-
   const handleDownloadImage = async () => {
+    if (!cardRef.current) return;
     try {
       setIsExportingImage(true);
       onToast('Đang tạo ảnh bảng trực nhật sắc nét...', 'info');
-      const canvas = await generateCardCanvas();
-      if (!canvas) throw new Error('Không thể tạo ảnh');
-
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = `Truc_Nhat_Lop_${classInfo.className}_${timePeriodLabel.replace(/[^a-zA-Z0-9\u00C0-\u1EF9]+/g, '_')}.png`;
-      link.href = dataUrl;
-      link.click();
-
+      const canvas = await exportElementToCanvas(cardRef.current);
+      const filename = `Truc_Nhat_Lop_${classInfo.className}_${timePeriodLabel.replace(/[^a-zA-Z0-9\u00C0-\u1EF9]+/g, '_')}.png`;
+      triggerPngDownload(canvas, filename);
       onToast('Đã tải ảnh bảng trực nhật về máy! Hãy gửi vào nhóm Zalo lớp.', 'success');
     } catch (err) {
       console.error(err);
@@ -118,34 +103,29 @@ export const DutyScheduleModal: React.FC<DutyScheduleModalProps> = ({
   };
 
   const handleShareImageToZalo = async () => {
+    if (!cardRef.current) return;
     try {
       setIsExportingImage(true);
-      const canvas = await generateCardCanvas();
-      if (!canvas) return;
+      const canvas = await exportElementToCanvas(cardRef.current);
+      const blob = await canvasToPngBlob(canvas);
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
+      if (blob) {
         const file = new File([blob], `Truc_Nhat_Lop_${classInfo.className}.png`, { type: 'image/png' });
         const shared = await shareViaMobile({
           title: `Lịch trực nhật lớp ${classInfo.className}`,
           text: `Bảng tổng hợp vi phạm & lịch trực nhật ${timePeriodLabel}`,
           file,
         });
+        if (shared) return;
+      }
 
-        if (!shared) {
-          // Desktop fallback: download image and open Zalo Web
-          const dataUrl = canvas.toDataURL('image/png');
-          const link = document.createElement('a');
-          link.download = `Truc_Nhat_Lop_${classInfo.className}.png`;
-          link.href = dataUrl;
-          link.click();
-          onToast('Đã tải ảnh về máy và mở Zalo! Thầy/Cô thả ảnh vừa tải vào nhóm lớp nhé.', 'success');
-          window.open('https://zalo.me/', '_blank');
-        }
-      }, 'image/png');
+      // Desktop / unsupported share fallback: download image and open Zalo
+      triggerPngDownload(canvas, `Truc_Nhat_Lop_${classInfo.className}.png`);
+      onToast('Đã tải ảnh về máy và mở Zalo! Thầy/Cô thả ảnh vừa tải vào nhóm lớp nhé.', 'success');
+      window.open('https://zalo.me/', '_blank');
     } catch (err) {
       console.error(err);
-      handleDownloadImage();
+      onToast('Lỗi khi xuất ảnh, vui lòng thử lại!', 'error');
     } finally {
       setIsExportingImage(false);
     }

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import html2canvas from 'html2canvas';
 import { StudentViolationSummary, ClassInfo } from '../types';
 import { generateZaloMessage, getZaloChatUrl, copyToClipboard, shareViaMobile } from '../utils/zalo';
+import { exportElementToCanvas, canvasToPngBlob, triggerPngDownload } from '../utils/imageExport';
 import { ViolationReportCard } from './ViolationReportCard';
 import { X, Send, Copy, Download, Share2, FileText, Image as ImageIcon, CheckCircle2, Phone } from 'lucide-react';
 
@@ -44,30 +44,14 @@ export const SendZaloModal: React.FC<SendZaloModalProps> = ({
     }
   };
 
-  const generateCardCanvas = async (): Promise<HTMLCanvasElement | null> => {
-    if (!cardRef.current) return null;
-    return await html2canvas(cardRef.current, {
-      scale: 2, // High resolution for mobile retina screens
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-    });
-  };
-
   const handleDownloadImage = async () => {
+    if (!cardRef.current) return;
     try {
       setIsExportingImage(true);
       onToast('Đang tạo ảnh báo cáo chất lượng cao...', 'info');
-      const canvas = await generateCardCanvas();
-      if (!canvas) throw new Error('Không thể tạo canvas');
-
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
+      const canvas = await exportElementToCanvas(cardRef.current);
       const safeName = summary.student.name.replace(/\s+/g, '_');
-      link.download = `Bao_Cao_Ne_Nep_${safeName}_${timePeriodLabel.replace(/\s+/g, '_')}.png`;
-      link.href = dataUrl;
-      link.click();
-
+      triggerPngDownload(canvas, `Bao_Cao_Ne_Nep_${safeName}_${timePeriodLabel.replace(/\s+/g, '_')}.png`);
       onToast('Đã tải ảnh báo cáo về máy thành công!', 'success');
     } catch (err) {
       console.error(err);
@@ -78,28 +62,28 @@ export const SendZaloModal: React.FC<SendZaloModalProps> = ({
   };
 
   const handleShareImage = async () => {
+    if (!cardRef.current) return;
     try {
       setIsExportingImage(true);
-      const canvas = await generateCardCanvas();
-      if (!canvas) return;
+      const canvas = await exportElementToCanvas(cardRef.current);
+      const blob = await canvasToPngBlob(canvas);
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
+      if (blob) {
         const file = new File([blob], `Bao_Cao_${summary.student.name}.png`, { type: 'image/png' });
         const shared = await shareViaMobile({
           title: `Báo cáo nề nếp em ${summary.student.name}`,
           text: textContent,
           file,
         });
+        if (shared) return;
+      }
 
-        if (!shared) {
-          // If native share is not available, download instead
-          handleDownloadImage();
-        }
-      }, 'image/png');
+      const safeName = summary.student.name.replace(/\s+/g, '_');
+      triggerPngDownload(canvas, `Bao_Cao_Ne_Nep_${safeName}.png`);
+      onToast('Đã tải ảnh báo cáo về máy thành công!', 'success');
     } catch (err) {
       console.error(err);
-      handleDownloadImage();
+      onToast('Lỗi khi xuất ảnh, vui lòng thử lại!', 'error');
     } finally {
       setIsExportingImage(false);
     }
