@@ -9,7 +9,11 @@ import {
   generateClassPeriodSummaryMessage,
   shareViaMobile
 } from '../utils/zalo';
-import { generateZaloWebAutoScript } from '../utils/zaloWebScript';
+import {
+  generateZaloWebAutoScript,
+  generateZaloWebBatchPayload,
+  generateZaloWebBookmarklet
+} from '../utils/zaloWebScript';
 import {
   X,
   Send,
@@ -32,7 +36,8 @@ import {
   ArrowRight,
   Bot,
   Terminal,
-  Monitor
+  Monitor,
+  Bookmark
 } from 'lucide-react';
 
 export interface BulkSendTarget {
@@ -75,7 +80,10 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
 }) => {
   // Modal Mode: 'group' (Gửi vào nhóm Zalo lớp), 'individual' (Gửi riêng từng PH), 'zaloweb' (Tự động Zalo Web trên máy tính)
   const [sendMode, setSendMode] = useState<'group' | 'individual' | 'zaloweb'>(initialMode);
+  const [zaloWebMethod, setZaloWebMethod] = useState<'bookmark' | 'console'>('bookmark');
   const [hasCopiedScript, setHasCopiedScript] = useState(false);
+  const [hasCopiedBatchData, setHasCopiedBatchData] = useState(false);
+  const [hasCopiedBookmarklet, setHasCopiedBookmarklet] = useState(false);
 
   // Selected targets for individual queue
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -147,14 +155,37 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
     }
   };
 
-  // Handler: Copy Zalo Web Auto Script
+  const reportTitle = isPeriod ? `Báo cáo ${periodLabel || 'theo tuần'}` : `Báo cáo ngày ${targets[0]?.date || ''}`;
+  const bookmarkletHref = generateZaloWebBookmarklet();
+
+  // Handler: Copy Batch Payload for Bookmarklet (NO F12)
+  const handleCopyBatchData = async () => {
+    const payload = generateZaloWebBatchPayload(targets, className, reportTitle);
+    const ok = await copyToClipboard(payload);
+    if (ok) {
+      setHasCopiedBatchData(true);
+      onToast('Đã chép dữ liệu gửi! Hãy sang tab Zalo Web và bấm Dấu trang "⚡ Gửi Zalo Sổ Chủ Nhiệm".', 'success');
+      setTimeout(() => setHasCopiedBatchData(false), 5000);
+    }
+  };
+
+  // Handler: Copy Bookmarklet URL for manual bookmark creation
+  const handleCopyBookmarkletCode = async () => {
+    const ok = await copyToClipboard(bookmarkletHref);
+    if (ok) {
+      setHasCopiedBookmarklet(true);
+      onToast('Đã chép mã Dấu trang! Chuột phải vào Thanh dấu trang ➔ Thêm trang ➔ Dán vào ô URL.', 'success');
+      setTimeout(() => setHasCopiedBookmarklet(false), 5000);
+    }
+  };
+
+  // Handler: Copy Zalo Web Auto Script (F12 Console)
   const handleCopyZaloWebScript = async () => {
-    const reportTitle = isPeriod ? `Báo cáo ${periodLabel || 'theo tuần'}` : `Báo cáo ngày ${targets[0]?.date || ''}`;
     const script = generateZaloWebAutoScript(targets, className, reportTitle);
     const ok = await copyToClipboard(script);
     if (ok) {
       setHasCopiedScript(true);
-      onToast('Đã sao chép đoạn mã tự động! Hãy mở Zalo Web (chat.zalo.me) để dán và chạy.', 'success');
+      onToast('Đã sao chép mã F12! Nhớ gõ "allow pasting" + Enter trước nếu trình duyệt chặn dán.', 'success');
       setTimeout(() => setHasCopiedScript(false), 5000);
     }
   };
@@ -727,78 +758,162 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
                   <span className="font-extrabold text-xs sm:text-sm">Công cụ Tự động gửi tin nhắn trên Zalo Web (Máy tính)</span>
                 </div>
                 <p className="text-[11px] text-blue-100 leading-relaxed">
-                  Thầy/Cô không cần phải bấm từng phụ huynh nữa! Công cụ này sẽ chạy trực tiếp trên trang <strong>Zalo Web (chat.zalo.me)</strong>: tự động tìm từng số điện thoại, tự động dán tin nhắn vi phạm riêng và tự động bấm gửi lần lượt cho toàn bộ <strong>{targets.length} học sinh</strong>.
+                  Tự động tìm từng số điện thoại, dán tin nhắn và gửi lần lượt cho toàn bộ <strong>{targets.length} học sinh</strong> ngay trên <strong>Zalo Web (chat.zalo.me)</strong>.
                 </p>
               </div>
 
-              {/* Primary Action Button */}
-              <div className="space-y-2">
+              {/* Sub-mode Toggle: Bookmarklet (NO F12) vs F12 Console */}
+              <div className="flex gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200">
                 <button
                   type="button"
-                  onClick={handleCopyZaloWebScript}
-                  className="w-full py-4 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                  onClick={() => setZaloWebMethod('bookmark')}
+                  className={`flex-1 py-2 px-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
+                    zaloWebMethod === 'bookmark'
+                      ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  {hasCopiedScript ? (
-                    <>
-                      <Check className="w-5 h-5 text-yellow-300 stroke-[3]" />
-                      <span>ĐÃ CHÉP MÃ TỰ ĐỘNG! SẴN SÀNG MỞ ZALO WEB</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-5 h-5 text-yellow-300" />
-                      <span>📋 SAO CHÉP MÃ TỰ ĐỘNG GỬI CHO {targets.length} EM</span>
-                    </>
-                  )}
+                  <Bookmark className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Cách Dấu trang (Không cần F12)</span>
                 </button>
-
-                <a
-                  href="https://chat.zalo.me"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2.5 px-3 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                <button
+                  type="button"
+                  onClick={() => setZaloWebMethod('console')}
+                  className={`flex-1 py-2 px-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${
+                    zaloWebMethod === 'console'
+                      ? 'bg-white text-indigo-700 shadow-xs border border-indigo-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Mở Zalo Web (chat.zalo.me) trong tab mới</span>
-                </a>
+                  <Terminal className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Cách F12 (Dự phòng)</span>
+                </button>
               </div>
 
-              {/* 3 Step Visual Guide */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                <div className="font-extrabold text-xs text-slate-800 flex items-center gap-1.5">
-                  <Terminal className="w-4 h-4 text-blue-600" />
-                  <span>Hướng dẫn 3 bước cực dễ để chạy trên Zalo Web:</span>
-                </div>
+              {zaloWebMethod === 'bookmark' ? (
+                <div className="space-y-3">
+                  {/* Step 0: One-time Bookmark setup */}
+                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-2.5">
+                    <div className="font-extrabold text-xs text-amber-950 flex items-center justify-between">
+                      <span>📌 Bước chuẩn bị (Chỉ làm 1 lần duy nhất):</span>
+                      <span className="text-[10px] bg-amber-200/70 text-amber-900 px-2 py-0.5 rounded-full font-bold">Không cần F12</span>
+                    </div>
+                    <p className="text-[11px] text-amber-900 leading-relaxed">
+                      Thầy/Cô hãy giữ chuột kéo nút màu tím dưới đây thả lên <strong>Thanh dấu trang</strong> (ngay dưới thanh địa chỉ Chrome/Edge):
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        ref={(el) => {
+                          if (el) el.setAttribute('href', bookmarkletHref);
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onToast('Hãy GIỮ CHUỘT và KÉO nút này thả lên Thanh dấu trang phía trên (hoặc bấm Sao chép mã dấu trang)!', 'info');
+                        }}
+                        draggable
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-xs rounded-xl shadow-md cursor-grab active:cursor-grabbing select-none"
+                        title="Kéo nút này lên Thanh dấu trang Chrome"
+                      >
+                        <Bookmark className="w-3.5 h-3.5 text-yellow-300" />
+                        <span>⚡ Gửi Zalo Sổ Chủ Nhiệm</span>
+                      </a>
 
-                <div className="space-y-2.5 text-xs text-slate-700">
-                  <div className="flex items-start gap-2.5 p-2 bg-white rounded-xl border border-slate-200/80">
-                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                      <button
+                        type="button"
+                        onClick={handleCopyBookmarkletCode}
+                        className="px-2.5 py-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-[11px] font-bold flex items-center gap-1"
+                      >
+                        {hasCopiedBookmarklet ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{hasCopiedBookmarklet ? 'Đã chép mã dấu trang' : 'Hoặc chép mã dấu trang'}</span>
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-amber-800">
+                      * Nếu thanh dấu trang đang ẩn, bấm <kbd className="px-1 py-0.5 bg-white border border-amber-300 rounded font-mono font-bold">Ctrl + Shift + B</kbd> để hiện lên. Hoặc chuột phải vào thanh dấu trang ➔ <em>Thêm trang</em> ➔ dán mã vào ô <strong>URL</strong>.
+                    </p>
+                  </div>
+
+                  {/* Step 1 & 2 Actions */}
+                  <button
+                    type="button"
+                    onClick={handleCopyBatchData}
+                    className="w-full py-4 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    {hasCopiedBatchData ? (
+                      <>
+                        <Check className="w-5 h-5 text-yellow-300 stroke-[3]" />
+                        <span>ĐÃ CHÉP DỮ LIỆU {targets.length} EM! MỞ ZALO WEB & BẤM DẤU TRANG</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-5 h-5 text-yellow-300" />
+                        <span>📋 1. SAO CHÉP DỮ LIỆU GỬI ({targets.length} EM)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <a
+                    href="https://chat.zalo.me"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-3 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>2. Mở Zalo Web (chat.zalo.me) rồi bấm Dấu trang ⚡ vừa tạo</span>
+                  </a>
+
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 leading-relaxed flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <strong>Mở Zalo Web:</strong> Mở tab <span className="text-blue-600 font-bold font-mono">chat.zalo.me</span> trên trình duyệt máy tính (nơi Thầy/Cô đã đăng nhập Zalo).
+                      Khi bấm <strong>⚡ Gửi Zalo Sổ Chủ Nhiệm</strong> trên Zalo Web, bảng điều khiển sẽ hiện ra ngay (nếu trình duyệt chưa tự nạp, Thầy/Cô chỉ cần nhấn <kbd className="px-1 py-0.5 bg-white border border-emerald-300 rounded font-mono font-bold">Ctrl + V</kbd> vào ô hiện trên bảng là xong, hoàn toàn không bị chặn!).
                     </div>
                   </div>
-
-                  <div className="flex items-start gap-2.5 p-2 bg-white rounded-xl border border-slate-200/80">
-                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">2</span>
-                    <div>
-                      <strong>Mở Bảng điều khiển Console:</strong> Nhấn phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono font-bold text-[11px]">F12</kbd> (hoặc click chuột phải vào màn hình Zalo chọn <em>Kiểm tra / Inspect</em>) ➔ bấm vào thẻ <strong>Console</strong>.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Fix Self-XSS F12 Alert */}
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl space-y-1.5 text-[11px] text-rose-900">
+                    <div className="font-extrabold text-rose-950 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>Cách xử lý khi F12 hiện chữ đỏ &quot;Dừng lại!&quot; và không dán được:</span>
                     </div>
+                    <p className="leading-relaxed">
+                      1. Chữ đỏ <strong>&quot;Dừng lại!&quot;</strong> chỉ là cảnh báo mặc định của Zalo, không phải lỗi.<br />
+                      2. Chrome/Edge chặn dán lần đầu để bảo mật: hãy bấm vào dòng cuối cùng có dấu <kbd className="px-1 bg-white border border-rose-300 rounded font-mono font-bold">&gt;</kbd> trong Console, gõ đúng chữ <kbd className="px-1.5 py-0.5 bg-white border border-rose-300 rounded font-mono font-bold text-rose-700">allow pasting</kbd> rồi nhấn <kbd className="px-1 bg-white border border-rose-300 rounded font-mono font-bold">Enter</kbd>. Sau đó mới nhấn <kbd className="px-1 bg-white border border-rose-300 rounded font-mono font-bold">Ctrl + V</kbd> + <kbd className="px-1 bg-white border border-rose-300 rounded font-mono font-bold">Enter</kbd>.
+                    </p>
                   </div>
 
-                  <div className="flex items-start gap-2.5 p-2 bg-white rounded-xl border border-slate-200/80">
-                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">3</span>
-                    <div>
-                      <strong>Dán mã và bấm Enter:</strong> Nhấn <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono font-bold text-[11px]">Ctrl + V</kbd> để dán đoạn mã vừa chép ở trên rồi gõ phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono font-bold text-[11px]">Enter</kbd>.
-                    </div>
+                  {/* Primary Action Button */}
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyZaloWebScript}
+                      className="w-full py-4 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                    >
+                      {hasCopiedScript ? (
+                        <>
+                          <Check className="w-5 h-5 text-yellow-300 stroke-[3]" />
+                          <span>ĐÃ CHÉP MÃ F12! SẴN SÀNG MỞ ZALO WEB</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-5 h-5 text-yellow-300" />
+                          <span>📋 SAO CHÉP MÃ CHẠY F12 CHO {targets.length} EM</span>
+                        </>
+                      )}
+                    </button>
+
+                    <a
+                      href="https://chat.zalo.me"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 px-3 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Mở Zalo Web (chat.zalo.me) trong tab mới</span>
+                    </a>
                   </div>
                 </div>
-
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 leading-relaxed flex items-start gap-2">
-                  <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Kết quả:</strong> Trên góc phải Zalo Web sẽ xuất hiện ngay <strong>Bảng điều khiển màu xanh</strong> có danh sách cả {targets.length} học sinh. Thầy/Cô chỉ cần bấm <strong>&quot;▶ BẮT ĐẦU GỬI TỰ ĐỘNG&quot;</strong>, máy tính sẽ tự động tìm kiếm từng số, điền tin nhắn và gửi lần lượt từ đầu đến cuối!
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
