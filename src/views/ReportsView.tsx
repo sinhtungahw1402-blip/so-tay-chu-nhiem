@@ -13,6 +13,7 @@ import {
 import { exportViolationReportToExcel } from '../utils/excel';
 import { copyToClipboard, generateCompactPeriodMessage } from '../utils/zalo';
 import { BulkSendTarget } from '../components/BulkSendModal';
+import { DutyScheduleModal } from '../components/DutyScheduleModal';
 import {
   Calendar,
   FileSpreadsheet,
@@ -22,7 +23,8 @@ import {
   ChevronUp,
   CheckCircle2,
   Users,
-  Bot
+  Bot,
+  ClipboardList
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -54,6 +56,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [customEnd, setCustomEnd] = useState<string>(getCurrentWeekRange().end);
   const [viewFilter, setViewFilter] = useState<'all' | 'violated_only' | 'good_only'>('all');
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
+  const [isDutyModalOpen, setIsDutyModalOpen] = useState(false);
 
   // Compute date range based on filterType
   let startDate = '';
@@ -367,6 +370,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <Bot className="w-4 h-4 text-yellow-300" />
             <span>Tự động gửi từng phụ huynh trên Zalo Web ({totalViolatedStudents} em)</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setIsDutyModalOpen(true)}
+            className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:brightness-105 text-white rounded-2xl text-xs font-black shadow-md shadow-orange-500/25 transition-all flex items-center justify-center gap-2"
+          >
+            <ClipboardList className="w-4 h-4 text-yellow-100" />
+            <span>Lập DS lỗi nhiều &amp; Phân công trực nhật ({totalViolatedStudents} em)</span>
+          </button>
         </div>
       )}
 
@@ -536,6 +548,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           })
         )}
       </div>
+
+      <DutyScheduleModal
+        isOpen={isDutyModalOpen}
+        onClose={() => setIsDutyModalOpen(false)}
+        summaries={summaries}
+        classInfo={classInfo}
+        timePeriodLabel={timeLabel}
+        onToast={onToast}
+      />
     </div>
   );
 };
