@@ -49,6 +49,9 @@ interface BulkSendModalProps {
   subtitle: string;
   targets: BulkSendTarget[];
   className?: string;
+  sendType?: 'daily' | 'period';
+  periodLabel?: string;
+  initialMode?: 'group' | 'individual' | 'zaloweb';
   gatewayConfig: GatewayConfig;
   onSaveFailedRecords: (failed: FailedDispatchRecord[]) => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
@@ -63,12 +66,15 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
   subtitle,
   targets,
   className = 'Lớp',
+  sendType = 'daily',
+  periodLabel,
+  initialMode = 'group',
   gatewayConfig,
   onSaveFailedRecords,
   onToast,
 }) => {
   // Modal Mode: 'group' (Gửi vào nhóm Zalo lớp), 'individual' (Gửi riêng từng PH), 'zaloweb' (Tự động Zalo Web trên máy tính)
-  const [sendMode, setSendMode] = useState<'group' | 'individual' | 'zaloweb'>('group');
+  const [sendMode, setSendMode] = useState<'group' | 'individual' | 'zaloweb'>(initialMode);
   const [hasCopiedScript, setHasCopiedScript] = useState(false);
 
   // Selected targets for individual queue
@@ -82,6 +88,7 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
   // Initialize state when modal opens
   useEffect(() => {
     if (isOpen) {
+      setSendMode(initialMode);
       setSelectedIds(new Set(targets.map(t => t.student.id)));
       const initialMap: Record<string, { status: ItemStatus; reason?: string }> = {};
       targets.forEach(t => {
@@ -98,14 +105,16 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
       setIsRunningWebhook(false);
       setCopiedGroupMessage(false);
     }
-  }, [isOpen, targets]);
+  }, [isOpen, targets, initialMode]);
 
   if (!isOpen) return null;
 
+  const isPeriod = sendType === 'period' || Boolean(periodLabel);
+
   // Generate Group Message for the whole class
-  const groupMessage = targets[0]?.date
-    ? generateClassDailySummaryMessage(className, targets[0].date, targets)
-    : generateClassPeriodSummaryMessage(className, 'kỳ này', targets);
+  const groupMessage = isPeriod
+    ? generateClassPeriodSummaryMessage(className, periodLabel || 'kỳ này', targets)
+    : generateClassDailySummaryMessage(className, targets[0]?.date || '', targets);
 
   // Active queue target
   const activeTarget = targets[activeQueueIndex];
@@ -140,7 +149,8 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
 
   // Handler: Copy Zalo Web Auto Script
   const handleCopyZaloWebScript = async () => {
-    const script = generateZaloWebAutoScript(targets, className);
+    const reportTitle = isPeriod ? `Báo cáo ${periodLabel || 'theo tuần'}` : `Báo cáo ngày ${targets[0]?.date || ''}`;
+    const script = generateZaloWebAutoScript(targets, className, reportTitle);
     const ok = await copyToClipboard(script);
     if (ok) {
       setHasCopiedScript(true);
@@ -406,7 +416,7 @@ export const BulkSendModal: React.FC<BulkSendModalProps> = ({
                   <span className="text-xs">Giải pháp gửi nhanh nhất cho GVCN:</span>
                 </div>
                 <p className="text-[11px] text-emerald-800 leading-relaxed">
-                  Thay vì phải gửi 16 lần riêng lẻ, Thầy/Cô chỉ cần bấm <strong>&quot;Mở Zalo gửi vào Nhóm Lớp&quot;</strong> bên dưới. Hệ thống sẽ tự động tổng hợp danh sách cả 16 em vào 1 tin nhắn và mở Zalo, Thầy/Cô chỉ cần chạm dán vào <strong>Nhóm Zalo lớp</strong> là toàn bộ phụ huynh đều nhận được ngay!
+                  Thay vì phải gửi {targets.length} lần riêng lẻ, Thầy/Cô chỉ cần bấm <strong>&quot;Mở Zalo gửi vào Nhóm Lớp&quot;</strong> bên dưới. Hệ thống sẽ tự động tổng hợp danh sách cả {targets.length} em vào 1 tin nhắn và mở Zalo, Thầy/Cô chỉ cần chạm dán vào <strong>Nhóm Zalo lớp</strong> là toàn bộ phụ huynh đều nhận được ngay!
                 </p>
               </div>
 

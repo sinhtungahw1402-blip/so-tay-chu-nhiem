@@ -104,8 +104,28 @@ Kính báo gia đình phối hợp đôn đốc, nhắc nhở em.`;
 }
 
 /**
+ * Nhóm các vi phạm theo từng ngày (sắp xếp tăng dần theo ngày)
+ */
+export function groupRecordsByDate(records: ViolationRecord[]): { date: string; dayOfWeek: string; records: ViolationRecord[] }[] {
+  if (!records || records.length === 0) return [];
+  const sorted = [...records].sort((a, b) => a.date.localeCompare(b.date));
+  const map = new Map<string, ViolationRecord[]>();
+  sorted.forEach(r => {
+    const list = map.get(r.date) || [];
+    list.push(r);
+    map.set(r.date, list);
+  });
+
+  return Array.from(map.entries()).map(([date, recs]) => ({
+    date,
+    dayOfWeek: getDayOfWeekVN(date),
+    records: recs,
+  }));
+}
+
+/**
  * Mẫu tin nhắn ngắn gọn tổng hợp định kỳ (Tuần, Tháng, Học kỳ)
- * Gồm: Tên học sinh, Ngày/Kỳ vi phạm, Chi tiết vi phạm (KHÔNG có họ tên phụ huynh)
+ * Gồm: Tên học sinh, Ngày/Kỳ vi phạm, Chi tiết vi phạm chia rõ ràng theo từng ngày (KHÔNG có họ tên phụ huynh)
  */
 export function generateCompactPeriodMessage(
   studentName: string,
@@ -123,18 +143,23 @@ Kết quả: Em thực hiện rất tốt nội quy, không vi phạm.
 Điểm nề nếp: ${currentScore}/100 (Xếp loại: Xuất sắc)`;
   }
 
-  const lines = records.map((r, idx) => {
-    const dStr = formatDateVN(r.date);
-    const periodStr = r.period ? ` [${r.period}]` : '';
-    const noteStr = r.note ? ` - ${r.note}` : '';
-    return `${idx + 1}. Ngày ${dStr}: ${r.categoryName}${periodStr} (-${r.pointsDeducted}đ)${noteStr}`;
+  const grouped = groupRecordsByDate(records);
+  const daySections = grouped.map(g => {
+    const dateFormatted = formatDateVN(g.date);
+    const items = g.records.map(r => {
+      const periodStr = r.period ? ` [${r.period}]` : '';
+      const subjectStr = r.subject ? ` (Môn ${r.subject})` : '';
+      const noteStr = r.note ? ` - ${r.note}` : '';
+      return `  - ${r.categoryName}${periodStr}${subjectStr} (-${r.pointsDeducted}đ)${noteStr}`;
+    }).join('\n');
+    return `• ${g.dayOfWeek} (${dateFormatted}):\n${items}`;
   }).join('\n');
 
   return `[Lớp ${className}] Báo cáo nề nếp ${timePeriodLabel}
 Học sinh: ${studentName}
 Tổng số vi phạm: ${totalViolations} lần | Còn ${currentScore}đ (Xếp loại: ${rank})
-Nội dung vi phạm:
-${lines}
+Chi tiết vi phạm theo từng ngày:
+${daySections}
 Kính báo gia đình phối hợp đôn đốc, nhắc nhở em.`;
 }
 
@@ -174,15 +199,28 @@ export function generateClassPeriodSummaryMessage(
 ): string {
   const studentLines = targets.map((t, idx) => {
     const totalDeducted = t.records.reduce((sum, r) => sum + r.pointsDeducted, 0);
-    return `${idx + 1}. ${t.student.name}: ${t.records.length} lần vi phạm (Trừ ${totalDeducted}đ)`;
+    const grouped = groupRecordsByDate(t.records);
+
+    const dayLines = grouped.map(g => {
+      const dateFormatted = formatDateVN(g.date);
+      const violationDetails = g.records.map(r => {
+        const periodStr = r.period ? ` [${r.period}]` : '';
+        const subjectStr = r.subject ? ` (${r.subject})` : '';
+        const noteStr = r.note ? ` - ${r.note}` : '';
+        return `${r.categoryName}${periodStr}${subjectStr} (-${r.pointsDeducted}đ)${noteStr}`;
+      }).join('; ');
+      return `   • ${g.dayOfWeek} (${dateFormatted}): ${violationDetails}`;
+    }).join('\n');
+
+    return `${idx + 1}. ${t.student.name} (${t.records.length} lỗi, -${totalDeducted}đ):\n${dayLines}`;
   }).join('\n');
 
-  return `[Lớp ${className}] TỔNG HỢP NỀ NẾP ${timePeriodLabel.toUpperCase()}
+  return `[Lớp ${className}] BÁO CÁO VI PHẠM NỀ NẾP ${timePeriodLabel.toUpperCase()}
 Kính gửi Quý Phụ huynh,
-Tổng hợp nề nếp của lớp trong ${timePeriodLabel} như sau:
+Tổng hợp các trường hợp vi phạm nề nếp của lớp trong ${timePeriodLabel} như sau:
 ${studentLines}
 
-Kính đề nghị Quý Phụ huynh quan tâm, phối hợp cùng GVCN để giáo dục các em.
+Kính đề nghị Quý Phụ huynh quan tâm, phối hợp cùng GVCN để nhắc nhở các em rèn luyện tốt hơn.
 Trân trọng cảm ơn!`;
 }
 

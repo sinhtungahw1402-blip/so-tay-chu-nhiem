@@ -19,18 +19,25 @@ export function formatDateVN(dateStr: string): string {
 
 export function getDayOfWeekVN(dateStr: string): string {
   if (!dateStr) return '';
-  const date = new Date(dateStr);
-  const day = date.getDay();
-  switch (day) {
-    case 0: return 'Chủ Nhật';
-    case 1: return 'Thứ Hai';
-    case 2: return 'Thứ Ba';
-    case 3: return 'Thứ Tư';
-    case 4: return 'Thứ Năm';
-    case 5: return 'Thứ Sáu';
-    case 6: return 'Thứ Bảy';
-    default: return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const date = new Date(year, month, day);
+    const dayOfWeek = date.getDay();
+    switch (dayOfWeek) {
+      case 0: return 'Chủ Nhật';
+      case 1: return 'Thứ Hai';
+      case 2: return 'Thứ Ba';
+      case 3: return 'Thứ Tư';
+      case 4: return 'Thứ Năm';
+      case 5: return 'Thứ Sáu';
+      case 6: return 'Thứ Bảy';
+      default: return '';
+    }
   }
+  return '';
 }
 
 // Get Monday and Sunday of the current week

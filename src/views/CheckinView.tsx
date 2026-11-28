@@ -26,7 +26,14 @@ interface CheckinViewProps {
   onSaveRecords: (newRecords: ViolationRecord[]) => void;
   onDeleteRecord: (id: string) => void;
   onOpenCategoryModal: () => void;
-  onOpenBulkSend: (targets: BulkSendTarget[], title: string, subtitle: string) => void;
+  onOpenBulkSend: (
+    targets: BulkSendTarget[],
+    title: string,
+    subtitle: string,
+    sendType?: 'daily' | 'period',
+    periodLabel?: string,
+    initialMode?: 'group' | 'individual' | 'zaloweb'
+  ) => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -220,7 +227,8 @@ export const CheckinView: React.FC<CheckinViewProps> = ({
     onOpenBulkSend(
       targets,
       `Gửi vi phạm ngày ${formatDateVN(selectedDate)}`,
-      `Gửi tự động cho ${targets.length} phụ huynh có con vi phạm hôm nay`
+      `Gửi tự động cho ${targets.length} phụ huynh có con vi phạm hôm nay`,
+      'daily'
     );
   };
 

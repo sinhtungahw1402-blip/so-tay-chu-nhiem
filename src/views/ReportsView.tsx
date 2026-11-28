@@ -21,7 +21,8 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  Users
+  Users,
+  Bot
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -29,7 +30,14 @@ interface ReportsViewProps {
   records: ViolationRecord[];
   classInfo: ClassInfo;
   onOpenSendZalo: (summary: StudentViolationSummary, timePeriodLabel: string) => void;
-  onOpenBulkSend: (targets: BulkSendTarget[], title: string, subtitle: string) => void;
+  onOpenBulkSend: (
+    targets: BulkSendTarget[],
+    title: string,
+    subtitle: string,
+    sendType?: 'daily' | 'period',
+    periodLabel?: string,
+    initialMode?: 'group' | 'individual' | 'zaloweb'
+  ) => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -192,7 +200,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   };
 
   // Bulk send periodic report to all parents of violated students
-  const handleOpenPeriodBulkSend = () => {
+  const handleOpenPeriodBulkSend = (initialMode: 'group' | 'individual' | 'zaloweb' = 'group') => {
     const violatedSummaries = summaries.filter(s => s.totalViolations > 0);
     if (violatedSummaries.length === 0) {
       onToast('Không có học sinh nào vi phạm trong kỳ này để gửi!', 'info');
@@ -217,7 +225,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     onOpenBulkSend(
       targets,
       `Gửi báo cáo ${timeLabel}`,
-      `Gửi tự động cho ${targets.length} phụ huynh có con vi phạm trong kỳ này`
+      `Gửi tự động cho ${targets.length} phụ huynh có con vi phạm trong kỳ này`,
+      'period',
+      timeLabel,
+      initialMode
     );
   };
 
@@ -336,16 +347,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       </div>
 
-      {/* PROMINENT BULK SEND FOR PERIOD BUTTON */}
+      {/* PROMINENT BULK SEND FOR PERIOD BUTTONS */}
       {totalViolatedStudents > 0 && (
-        <button
-          type="button"
-          onClick={handleOpenPeriodBulkSend}
-          className="w-full py-3 px-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-black shadow-md shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
-        >
-          <Send className="w-4 h-4 text-yellow-300" />
-          <span>Gửi báo cáo hàng loạt cho PH ({totalViolatedStudents} em có lỗi)</span>
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => handleOpenPeriodBulkSend('group')}
+            className="w-full py-3 px-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-black shadow-md shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+          >
+            <Send className="w-4 h-4 text-yellow-300" />
+            <span>Gửi báo cáo hàng loạt cho PH ({totalViolatedStudents} em có lỗi)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenPeriodBulkSend('zaloweb')}
+            className="w-full py-2.5 px-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:brightness-110 text-white rounded-2xl text-xs font-black shadow-md shadow-indigo-500/25 transition-all flex items-center justify-center gap-2"
+          >
+            <Bot className="w-4 h-4 text-yellow-300" />
+            <span>Tự động gửi từng phụ huynh trên Zalo Web ({totalViolatedStudents} em)</span>
+          </button>
+        </div>
       )}
 
       {/* Class Action Bar: Copy summary to Zalo Group or Export Excel */}

@@ -75,6 +75,9 @@ export const App: React.FC = () => {
   const [bulkSendTargets, setBulkSendTargets] = useState<BulkSendTarget[]>([]);
   const [bulkSendTitle, setBulkSendTitle] = useState('');
   const [bulkSendSubtitle, setBulkSendSubtitle] = useState('');
+  const [bulkSendType, setBulkSendType] = useState<'daily' | 'period'>('daily');
+  const [bulkSendPeriodLabel, setBulkSendPeriodLabel] = useState<string>('');
+  const [bulkSendInitialMode, setBulkSendInitialMode] = useState<'group' | 'individual' | 'zaloweb'>('group');
 
   // Cloud PIN Sync Modal state
   const [isCloudSyncOpen, setIsCloudSyncOpen] = useState(false);
@@ -217,10 +220,20 @@ export const App: React.FC = () => {
   };
 
   // Open Bulk Send Modal
-  const handleOpenBulkSend = (targets: BulkSendTarget[], title: string, subtitle: string) => {
+  const handleOpenBulkSend = (
+    targets: BulkSendTarget[],
+    title: string,
+    subtitle: string,
+    sendType: 'daily' | 'period' = 'daily',
+    periodLabel: string = '',
+    initialMode: 'group' | 'individual' | 'zaloweb' = 'group'
+  ) => {
     setBulkSendTargets(targets);
     setBulkSendTitle(title);
     setBulkSendSubtitle(subtitle);
+    setBulkSendType(sendType);
+    setBulkSendPeriodLabel(periodLabel);
+    setBulkSendInitialMode(initialMode);
     setIsBulkSendOpen(true);
   };
 
@@ -366,6 +379,9 @@ export const App: React.FC = () => {
         subtitle={bulkSendSubtitle}
         targets={bulkSendTargets}
         className={classInfo.className}
+        sendType={bulkSendType}
+        periodLabel={bulkSendPeriodLabel}
+        initialMode={bulkSendInitialMode}
         gatewayConfig={gatewayConfig}
         onSaveFailedRecords={handleSaveFailedRecords}
         onToast={addToast}

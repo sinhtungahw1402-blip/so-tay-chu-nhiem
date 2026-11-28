@@ -4,7 +4,7 @@ import { BulkSendTarget } from '../components/BulkSendModal';
  * Tạo đoạn mã JavaScript tự động hóa chạy trực tiếp trên Zalo Web (chat.zalo.me)
  * Thầy/Cô chỉ cần mở Console (F12) trên Zalo Web, dán vào và bấm Enter.
  */
-export function generateZaloWebAutoScript(targets: BulkSendTarget[], className: string): string {
+export function generateZaloWebAutoScript(targets: BulkSendTarget[], className: string, reportTitle?: string): string {
   const targetsData = targets.map((t, idx) => ({
     index: idx + 1,
     studentName: t.student.name,
@@ -15,6 +15,7 @@ export function generateZaloWebAutoScript(targets: BulkSendTarget[], className: 
   }));
 
   const jsonTargets = JSON.stringify(targetsData);
+  const scriptSubTitle = reportTitle ? `Tự động gửi ${reportTitle}` : 'Tự động gửi tin nhắn vi phạm riêng cho phụ huynh';
 
   return `(function() {
   // SỔ CHỦ NHIỆM - BỘ GỬI TIN TỰ ĐỘNG ZALO WEB
@@ -25,6 +26,7 @@ export function generateZaloWebAutoScript(targets: BulkSendTarget[], className: 
   window.__SOCHUNIEM_RUNNING__ = true;
 
   const className = ${JSON.stringify(className)};
+  const scriptSubTitle = ${JSON.stringify(scriptSubTitle)};
   let targets = ${jsonTargets};
   let isRunning = false;
   let isPaused = false;
@@ -60,7 +62,7 @@ export function generateZaloWebAutoScript(targets: BulkSendTarget[], className: 
           <span>🏫 Sổ Chủ Nhiệm Lớp \${className}</span>
           <span style="background: #fef08a; color: #854d0e; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 900;">TỰ ĐỘNG</span>
         </div>
-        <div style="font-size: 11px; opacity: 0.9; margin-top: 2px;">Tự động gửi tin nhắn vi phạm riêng cho phụ huynh</div>
+        <div style="font-size: 11px; opacity: 0.9; margin-top: 2px;">\${scriptSubTitle}</div>
       </div>
       <button id="scn-close-btn" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 16px; font-weight: bold;">✕</button>
     </div>
