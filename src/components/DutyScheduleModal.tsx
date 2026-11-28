@@ -1,7 +1,7 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import { ClassInfo, StudentViolationSummary } from '../types';
-import { generateDutySchedule, generateDutyScheduleText } from '../utils/dutySchedule';
+import { DutySortMode, generateDutySchedule, generateDutyScheduleText } from '../utils/dutySchedule';
 import { copyToClipboard, shareViaMobile } from '../utils/zalo';
 import { DutyScheduleCard } from './DutyScheduleCard';
 import {
@@ -22,6 +22,7 @@ interface DutyScheduleModalProps {
   summaries: StudentViolationSummary[];
   classInfo: ClassInfo;
   timePeriodLabel: string;
+  initialSortBy?: DutySortMode;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -31,18 +32,26 @@ export const DutyScheduleModal: React.FC<DutyScheduleModalProps> = ({
   summaries,
   classInfo,
   timePeriodLabel,
+  initialSortBy = 'violations',
   onToast,
 }) => {
   const [activeTab, setActiveTab] = useState<'image' | 'text'>('image');
   const [fridayCount, setFridayCount] = useState<4 | 5>(5);
+  const [sortBy, setSortBy] = useState<DutySortMode>(initialSortBy);
   const [topLimit, setTopLimit] = useState<number>(10);
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [hasCopiedText, setHasCopiedText] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setSortBy(initialSortBy);
+    }
+  }, [isOpen, initialSortBy]);
+
   const schedule = useMemo(
-    () => generateDutySchedule(summaries, { fridayAfternoonCount: fridayCount, minPerDay: 2 }),
-    [summaries, fridayCount]
+    () => generateDutySchedule(summaries, { fridayAfternoonCount: fridayCount, minPerDay: 2, sortBy }),
+    [summaries, fridayCount, sortBy]
   );
 
   const textContent = useMemo(
@@ -170,53 +179,83 @@ export const DutyScheduleModal: React.FC<DutyScheduleModalProps> = ({
         </div>
 
         {/* Configuration Controls */}
-        <div className="px-4 py-2.5 bg-amber-50/70 border-b border-amber-200/70 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-amber-950">Chiều T6 lau lớp:</span>
-            <button
-              type="button"
-              onClick={() => setFridayCount(4)}
-              className={`px-2 py-0.5 rounded-lg font-bold border transition-all ${
-                fridayCount === 4
-                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300'
-              }`}
-            >
-              4 bạn
-            </button>
-            <button
-              type="button"
-              onClick={() => setFridayCount(5)}
-              className={`px-2 py-0.5 rounded-lg font-bold border transition-all ${
-                fridayCount === 5
-                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300'
-              }`}
-            >
-              5 bạn
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-amber-950">Bảng lỗi:</span>
-            {[
-              { label: 'Top 5', val: 5 },
-              { label: 'Top 10', val: 10 },
-              { label: `Tất cả (${schedule.totalViolated})`, val: 0 },
-            ].map(opt => (
+        <div className="px-4 py-2.5 bg-amber-50/70 border-b border-amber-200/70 space-y-2 text-[11px]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold text-amber-950">Kiểu lọc &amp; chia danh sách:</span>
+            <div className="flex items-center gap-1">
               <button
-                key={opt.val}
                 type="button"
-                onClick={() => setTopLimit(opt.val)}
-                className={`px-2 py-0.5 rounded-lg font-bold border transition-all ${
-                  topLimit === opt.val
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                onClick={() => setSortBy('violations')}
+                className={`px-2.5 py-1 rounded-lg font-bold border transition-all ${
+                  sortBy === 'violations'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                     : 'bg-white text-slate-700 border-slate-300'
                 }`}
               >
-                {opt.label}
+                Số lỗi nhiều nhất
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setSortBy('points')}
+                className={`px-2.5 py-1 rounded-lg font-bold border transition-all ${
+                  sortBy === 'points'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300'
+                }`}
+              >
+                Điểm trừ nhiều nhất
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-amber-950">Chiều T6 lau lớp:</span>
+              <button
+                type="button"
+                onClick={() => setFridayCount(4)}
+                className={`px-2 py-0.5 rounded-lg font-bold border transition-all ${
+                  fridayCount === 4
+                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300'
+                }`}
+              >
+                4 bạn
+              </button>
+              <button
+                type="button"
+                onClick={() => setFridayCount(5)}
+                className={`px-2 py-0.5 rounded-lg font-bold border transition-all ${
+                  fridayCount === 5
+                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300'
+                }`}
+              >
+                5 bạn
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-amber-950">Bảng lỗi:</span>
+              {[
+                { label: 'Top 5', val: 5 },
+                { label: 'Top 10', val: 10 },
+                { label: `Tất cả (${schedule.totalViolated})`, val: 0 },
+              ].map(opt => (
+                <button
+                  key={opt.val}
+                  type="button"
+                  onClick={() => setTopLimit(opt.val)}
+                  className={`px-2 py-0.5 rounded-lg font-bold border transition-all ${
+                    topLimit === opt.val
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

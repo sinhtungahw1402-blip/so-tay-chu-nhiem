@@ -1,6 +1,7 @@
 import { StudentViolationSummary } from '../types';
 
 export type DutySlotId = 't2' | 't3' | 't4' | 't5' | 't6_sang' | 't6_chieu';
+export type DutySortMode = 'violations' | 'points';
 
 export interface DutyAssignee {
   summary: StudentViolationSummary;
@@ -21,52 +22,69 @@ export interface DutyScheduleResult {
   totalViolated: number;
   fridayAfternoonCount: number;
   minPerDay: number;
+  sortBy: DutySortMode;
 }
 
 /**
- * Sắp xếp học sinh có vi phạm theo mức độ vi phạm nhiều nhất -> điểm thấp nhất -> điểm trừ nhiều nhất -> STT.
+ * Sắp xếp danh sách học sinh theo tiêu chí đã chọn:
+ * - 'violations': Số lỗi nhiều nhất -> Điểm trừ nhiều nhất -> Điểm còn lại thấp nhất -> STT
+ * - 'points': Điểm trừ nhiều nhất -> Điểm còn lại thấp nhất -> Số lỗi nhiều nhất -> STT
  */
-export function sortMostViolated(summaries: StudentViolationSummary[]): StudentViolationSummary[] {
-  return summaries
-    .filter(s => s.totalViolations > 0)
-    .sort((a, b) =>
+export function sortSummariesByMode(
+  summaries: StudentViolationSummary[],
+  mode: DutySortMode = 'violations'
+): StudentViolationSummary[] {
+  return [...summaries].sort((a, b) => {
+    if (mode === 'points') {
+      return (
+        b.totalPointsDeducted - a.totalPointsDeducted ||
+        a.currentScore - b.currentScore ||
+        b.totalViolations - a.totalViolations ||
+        a.student.stt - b.student.stt
+      );
+    }
+    return (
       b.totalViolations - a.totalViolations ||
-      a.currentScore - b.currentScore ||
       b.totalPointsDeducted - a.totalPointsDeducted ||
+      a.currentScore - b.currentScore ||
       a.student.stt - b.student.stt
     );
+  });
 }
 
 /**
- * Sắp xếp học sinh có vi phạm theo điểm thấp nhất -> số lỗi nhiều nhất -> điểm trừ nhiều nhất -> STT.
+ * Sắp xếp học sinh có vi phạm theo điểm thấp nhất -> điểm trừ nhiều nhất -> số lỗi nhiều nhất -> STT.
  */
 export function sortLowestScore(summaries: StudentViolationSummary[]): StudentViolationSummary[] {
   return summaries
     .filter(s => s.totalViolations > 0)
     .sort((a, b) =>
       a.currentScore - b.currentScore ||
-      b.totalViolations - a.totalViolations ||
       b.totalPointsDeducted - a.totalPointsDeducted ||
+      b.totalViolations - a.totalViolations ||
       a.student.stt - b.student.stt
     );
 }
 
 /**
  * Tự động phân công trực nhật cho các học sinh vi phạm trong kỳ/tuần:
+ * - Xếp thứ tự theo 'violations' (số lỗi nhiều nhất) hoặc 'points' (điểm trừ nhiều nhất).
  * - Chia đều cho các buổi: Thứ 2, Thứ 3, Thứ 4, Thứ 5, Thứ 6 (Sáng), Thứ 6 (Chiều).
- * - Riêng Thứ 6 (Chiều): 4 hoặc 5 bạn nhiều lỗi nhất phải ở lại lau dọn lớp.
+ * - Riêng Thứ 6 (Chiều): 4 hoặc 5 bạn đứng đầu danh sách phải ở lại lau dọn lớp.
  * - Mỗi buổi phải có ít nhất 2 bạn; nếu thiếu, các bạn thấp điểm nhất trực tăng cường thêm buổi khác.
  */
 export function generateDutySchedule(
   summaries: StudentViolationSummary[],
-  options?: { fridayAfternoonCount?: 4 | 5; minPerDay?: number }
+  options?: { fridayAfternoonCount?: 4 | 5; minPerDay?: number; sortBy?: DutySortMode }
 ): DutyScheduleResult {
   const fridayTarget = options?.fridayAfternoonCount ?? 5;
   const minPerDay = options?.minPerDay ?? 2;
+  const sortBy: DutySortMode = options?.sortBy ?? 'violations';
 
-  const mostViolated = sortMostViolated(summaries);
-  const lowestScorePool = sortLowestScore(summaries);
-  const totalViolated = mostViolated.length;
+  const violated = summaries.filter(s => s.totalViolations > 0);
+  const rankedViolators = sortSummariesByMode(violated, sortBy);
+  const lowestScorePool = sortLowestScore(violated);
+  const totalViolated = rankedViolators.length;
 
   const slots: DutySlot[] = [
     { id: 't2', label: 'Thứ 2', note: 'Trực nhật đầu tuần', isSpecialCleanup: false, assignees: [] },
@@ -90,33 +108,33 @@ export function generateDutySchedule(
       totalViolated: 0,
       fridayAfternoonCount: fridayTarget,
       minPerDay,
+      sortBy,
     };
   }
 
-  // 1. Chọn 4 hoặc 5 bạn vi phạm nhiều nhất cho Thứ 6 (Chiều) lau dọn lớp
+  // 1. Chọn 4 hoặc 5 bạn đứng đầu (theo số lỗi hoặc số điểm trừ nhiều nhất) cho Thứ 6 (Chiều) lau dọn lớp
   const actualFridayCount = Math.min(fridayTarget, totalViolated);
   const fridaySlot = slots[slots.length - 1];
-  const fridayGroup = mostViolated.slice(0, actualFridayCount);
+  const fridayGroup = rankedViolators.slice(0, actualFridayCount);
   fridayGroup.forEach(s => {
     fridaySlot.assignees.push({ summary: s, isExtra: false });
   });
 
   // 2. Các bạn vi phạm còn lại chia đều lần lượt cho Thứ 2, Thứ 3, Thứ 4, Thứ 5, Thứ 6 (Sáng)
   const regularSlots = slots.slice(0, 5);
-  const remainingStudents = mostViolated.slice(actualFridayCount);
+  const remainingStudents = rankedViolators.slice(actualFridayCount);
   remainingStudents.forEach((s, idx) => {
     const targetSlot = regularSlots[idx % regularSlots.length];
     targetSlot.assignees.push({ summary: s, isExtra: false });
   });
 
   // 3. Đảm bảo mỗi buổi có ít nhất `minPerDay` bạn (tối đa bằng tổng số học sinh vi phạm nếu tổng < minPerDay)
-  // Chỉ huy động từ nhóm học sinh thấp điểm nhất (tối đa bằng nhóm chiều T6 hoặc một nửa số bạn vi phạm),
-  // chia đều lượt trực thêm trong nhóm thấp điểm này và không trùng người trong cùng một buổi.
+  // Huy động từ nhóm học sinh thấp điểm nhất, chia đều lượt trực thêm và không trùng người trong cùng một buổi.
   const requiredPerSlot = Math.min(minPerDay, totalViolated);
   const extraPoolSize = Math.min(totalViolated, Math.max(actualFridayCount, Math.ceil(totalViolated / 2)));
   const extraPool = lowestScorePool.slice(0, extraPoolSize);
   const extraCountMap = new Map<string, number>();
-  mostViolated.forEach(s => extraCountMap.set(s.student.id, 0));
+  rankedViolators.forEach(s => extraCountMap.set(s.student.id, 0));
 
   slots.forEach(slot => {
     while (slot.assignees.length < requiredPerSlot) {
@@ -133,8 +151,8 @@ export function generateDutySchedule(
         if (extraA !== extraB) return extraA - extraB;
         return (
           a.currentScore - b.currentScore ||
-          b.totalViolations - a.totalViolations ||
           b.totalPointsDeducted - a.totalPointsDeducted ||
+          b.totalViolations - a.totalViolations ||
           a.student.stt - b.student.stt
         );
       });
@@ -146,11 +164,12 @@ export function generateDutySchedule(
   });
 
   return {
-    topViolators: mostViolated,
+    topViolators: rankedViolators,
     slots,
     totalViolated,
     fridayAfternoonCount: fridayTarget,
     minPerDay,
+    sortBy,
   };
 }
 
@@ -167,10 +186,13 @@ export function generateDutyScheduleText(
     return `[Lớp ${className}] TỔNG HỢP TRỰC NHẬT (${timePeriodLabel})\nCả lớp thực hiện rất tốt nội quy, không có học sinh vi phạm phải trực nhật tăng cường!`;
   }
 
+  const sortLabel = schedule.sortBy === 'points' ? 'Số điểm trừ nhiều nhất' : 'Số lỗi vi phạm nhiều nhất';
   const displayTop = topLimit > 0 ? schedule.topViolators.slice(0, topLimit) : schedule.topViolators;
   const topLines = displayTop
     .map((s, idx) =>
-      `${idx + 1}. ${s.student.name}: ${s.totalViolations} lỗi (-${s.totalPointsDeducted}đ, còn ${s.currentScore}đ)`
+      schedule.sortBy === 'points'
+        ? `${idx + 1}. ${s.student.name}: -${s.totalPointsDeducted}đ (${s.totalViolations} lỗi, còn ${s.currentScore}đ)`
+        : `${idx + 1}. ${s.student.name}: ${s.totalViolations} lỗi (-${s.totalPointsDeducted}đ, còn ${s.currentScore}đ)`
     )
     .join('\n');
 
@@ -185,7 +207,7 @@ export function generateDutyScheduleText(
         .map(a => `${a.summary.student.name}${a.isExtra ? ' (trực thêm)' : ''}`)
         .join(', ');
       const header = slot.isSpecialCleanup
-        ? `🧹 ${slot.label} [Lau dọn lớp - ${slot.assignees.length} bạn lỗi nhiều nhất]`
+        ? `🧹 ${slot.label} [Lau dọn lớp - ${slot.assignees.length} bạn đứng đầu]`
         : `• ${slot.label} (${slot.assignees.length} bạn)`;
       return `${header}:\n  ${names || 'Chưa có'}`;
     })
@@ -193,6 +215,7 @@ export function generateDutyScheduleText(
 
   return `[Lớp ${className}] TỔNG HỢP VI PHẠM & PHÂN CÔNG TRỰC NHẬT
 Kỳ áp dụng: ${timePeriodLabel}
+Tiêu chí xếp hạng & chia: ${sortLabel}
 ---------------------------------------
 📌 DANH SÁCH VI PHẠM NHIỀU NHẤT (${displayTop.length}/${schedule.totalViolated} em):
 ${topLines}${moreNote}
@@ -200,5 +223,5 @@ ${topLines}${moreNote}
 🧹 LỊCH TRỰC NHẬT TỰ ĐỘNG (Mỗi buổi tối thiểu ${schedule.minPerDay} bạn):
 ${slotLines}
 
-* Lưu ý: Riêng chiều Thứ 6, ${Math.min(schedule.fridayAfternoonCount, schedule.totalViolated)} bạn vi phạm nhiều nhất ở lại lau dọn sạch sẽ lớp học. Kính nhờ Quý Phụ huynh đôn đốc các em thực hiện nghiêm túc!`;
+* Lưu ý: Riêng chiều Thứ 6, ${Math.min(schedule.fridayAfternoonCount, schedule.totalViolated)} bạn đứng đầu danh sách ở lại lau dọn sạch sẽ lớp học. Kính nhờ Quý Phụ huynh đôn đốc các em thực hiện nghiêm túc!`;
 }

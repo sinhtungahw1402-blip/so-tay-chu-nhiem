@@ -14,6 +14,7 @@ import { exportViolationReportToExcel } from '../utils/excel';
 import { copyToClipboard, generateCompactPeriodMessage } from '../utils/zalo';
 import { BulkSendTarget } from '../components/BulkSendModal';
 import { DutyScheduleModal } from '../components/DutyScheduleModal';
+import { DutySortMode, sortSummariesByMode } from '../utils/dutySchedule';
 import {
   Calendar,
   FileSpreadsheet,
@@ -24,7 +25,8 @@ import {
   CheckCircle2,
   Users,
   Bot,
-  ClipboardList
+  ClipboardList,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -55,6 +57,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [customStart, setCustomStart] = useState<string>(getCurrentWeekRange().start);
   const [customEnd, setCustomEnd] = useState<string>(getCurrentWeekRange().end);
   const [viewFilter, setViewFilter] = useState<'all' | 'violated_only' | 'good_only'>('all');
+  const [sortBy, setSortBy] = useState<DutySortMode>('violations');
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [isDutyModalOpen, setIsDutyModalOpen] = useState(false);
 
@@ -147,14 +150,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   });
 
   // Filter view based on viewFilter
-  const displaySummaries = summaries.filter(s => {
+  const filteredSummaries = summaries.filter(s => {
     if (viewFilter === 'violated_only') return s.totalViolations > 0;
     if (viewFilter === 'good_only') return s.totalViolations === 0;
     return true;
   });
 
-  // Sort: students with most violations on top for teachers to easily see who needs follow up
-  displaySummaries.sort((a, b) => b.totalViolations - a.totalViolations);
+  // Sort according to teacher's selected sort criterion ('violations' or 'points')
+  const displaySummaries = sortSummariesByMode(filteredSummaries, sortBy);
 
   const totalClassViolations = filteredRecords.length;
   const totalViolatedStudents = summaries.filter(s => s.totalViolations > 0).length;
@@ -185,7 +188,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
     if (totalViolatedStudents > 0) {
       textLines.push(`📋 Danh sách học sinh có vi phạm:`);
-      summaries.filter(s => s.totalViolations > 0).forEach((s, idx) => {
+      sortSummariesByMode(summaries.filter(s => s.totalViolations > 0), sortBy).forEach((s, idx) => {
         textLines.push(`${idx + 1}. Em ${s.student.name} (${s.student.group || 'Tổ'}): ${s.totalViolations} lỗi (-${s.totalPointsDeducted}đ) -> Còn ${s.currentScore}đ [Xếp loại: ${s.rank}]`);
       });
       textLines.push(``);
@@ -204,7 +207,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Bulk send periodic report to all parents of violated students
   const handleOpenPeriodBulkSend = (initialMode: 'group' | 'individual' | 'zaloweb' = 'group') => {
-    const violatedSummaries = summaries.filter(s => s.totalViolations > 0);
+    const violatedSummaries = sortSummariesByMode(
+      summaries.filter(s => s.totalViolations > 0),
+      sortBy
+    );
     if (violatedSummaries.length === 0) {
       onToast('Không có học sinh nào vi phạm trong kỳ này để gửi!', 'info');
       return;
@@ -429,6 +435,38 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </button>
       </div>
 
+      {/* Sort order selector: by violations count or points deducted */}
+      <div className="bg-white px-3 py-2 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-2 text-[11px]">
+        <span className="font-bold text-slate-600 flex items-center gap-1 shrink-0">
+          <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Xếp thứ tự:</span>
+        </span>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSortBy('violations')}
+            className={`px-2.5 py-1 rounded-xl font-bold border transition-all ${
+              sortBy === 'violations'
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Số lỗi nhiều nhất
+          </button>
+          <button
+            type="button"
+            onClick={() => setSortBy('points')}
+            className={`px-2.5 py-1 rounded-xl font-bold border transition-all ${
+              sortBy === 'points'
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Điểm trừ nhiều nhất
+          </button>
+        </div>
+      </div>
+
       {/* Student Violation Cards List */}
       <div className="space-y-3">
         {displaySummaries.length === 0 ? (
@@ -555,6 +593,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         summaries={summaries}
         classInfo={classInfo}
         timePeriodLabel={timeLabel}
+        initialSortBy={sortBy}
         onToast={onToast}
       />
     </div>

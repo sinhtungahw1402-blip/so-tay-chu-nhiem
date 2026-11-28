@@ -56,6 +56,9 @@ export const DutyScheduleCard: React.FC<DutyScheduleCardProps> = ({
           Bảng Tổng Hợp Vi Phạm &amp; Phân Công Trực Nhật
         </h2>
         <p className="text-[11px] font-bold text-orange-600 mt-0.5">{timePeriodLabel}</p>
+        <p className="text-[10px] font-semibold text-slate-500 mt-0.5">
+          Xếp &amp; chia theo: <strong className="text-slate-700">{schedule.sortBy === 'points' ? 'Số điểm trừ nhiều nhất' : 'Số lỗi vi phạm nhiều nhất'}</strong>
+        </p>
       </div>
 
       {/* Section 1: Top Violators Table */}
@@ -76,8 +79,10 @@ export const DutyScheduleCard: React.FC<DutyScheduleCardProps> = ({
               <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px]">
                 <th className="py-1.5 px-2 font-bold w-8 text-center">#</th>
                 <th className="py-1.5 px-2 font-bold">Học sinh</th>
-                <th className="py-1.5 px-2 font-bold text-center">Lỗi</th>
-                <th className="py-1.5 px-2 font-bold text-right">Điểm</th>
+                <th className="py-1.5 px-2 font-bold text-center">
+                  {schedule.sortBy === 'points' ? 'Điểm trừ (Số lỗi)' : 'Số lỗi (Điểm trừ)'}
+                </th>
+                <th className="py-1.5 px-2 font-bold text-right">Còn lại</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -100,7 +105,9 @@ export const DutyScheduleCard: React.FC<DutyScheduleCardProps> = ({
                       )}
                     </td>
                     <td className="py-1 px-2 text-center font-bold text-rose-600">
-                      {s.totalViolations} (-{s.totalPointsDeducted}đ)
+                      {schedule.sortBy === 'points'
+                        ? `-${s.totalPointsDeducted}đ (${s.totalViolations} lỗi)`
+                        : `${s.totalViolations} lỗi (-${s.totalPointsDeducted}đ)`}
                     </td>
                     <td className="py-1 px-2 text-right font-extrabold text-slate-700">
                       {s.currentScore}đ
